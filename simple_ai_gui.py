@@ -148,9 +148,22 @@ def get_word_candidates(user_input):
     candidates.update(a + b for a, b in zip(tokens, tokens[1:]))
     return candidates
 
-def keyword_match(user_input):
+def get_content_tokens(user_input):
     """
-    💡 [1차 검색 - 키워드 AND 조건 매칭 (토큰 단위)]
+    💡 [신규] 질문에서 조사/어미/동사 등을 제외한 '내용어(명사류)'만 추출합니다.
+    조건(conditions)이 질문 토큰에 다 포함되는지만 보면, "산청고"라는 키워드 하나만
+    있는 일반 항목이 "산청고 학생회장이 누구야?" 같은 질문에도 그냥 매칭돼버립니다.
+    질문 안에 '학생회장'처럼 그 키워드 그룹이 다루지 않는 핵심 명사가 남아있는지를
+    판단하기 위해, 명사(NOUN)/고유명사(PROPN)만 따로 뽑아둡니다.
+    """
+    if nlp is None:
+        return set(user_input.split())
+    return {tok.text for tok in nlp(user_input) if tok.pos_ in ("NOUN", "PROPN") and len(tok.text) > 1}
+
+
+def keyword_match(user_input, coverage_threshold=0.6):
+    """
+    💡 [1차 검색 - 키워드 AND 조건 매칭 + 명사 커버리지 검사]
     edge function의 `conditions.every(cond => intentMessage.includes(cond))` 로직을
     파이썬 쪽에도 적용하되, 부분 문자열이 아니라 '완전한 단어' 단위로 비교합니다.
 
@@ -159,9 +172,16 @@ def keyword_match(user_input):
     "인터스텔라에 들어가려면 어떻게 해야해?" 라는 질문은 조건 2개짜리(인터스텔라+가입류)에
     먼저 걸리고, "인터스텔라가 뭐야?"처럼 단일 키워드(인터스텔라)만 있는 일반 정의 항목보다
     우선순위를 갖게 됩니다.
+
+    💡 [커버리지 검사 - 문맥 오매칭 방지] 조건이 다 포함돼도, 질문 속 핵심 명사 중
+    이 키워드 그룹이 전혀 다루지 않는 명사가 많이 남아있다면(coverage_score가 낮다면)
+    "의도가 다른 질문"일 가능성이 높다고 보고 매칭을 기각합니다.
+    예: "산청고 학생회장이 누구야?" → 명사={산청고, 학생회장}, 키워드그룹=[산청고]
+        → 커버리지 1/2=0.5 < 0.6 → 기각 → 임베딩/AI 폴백으로 넘어감
     """
     word_candidates = get_word_candidates(user_input)
-    candidates = []  # (knowledge_base 인덱스, 조건 개수)
+    content_tokens = get_content_tokens(user_input)
+    candidates = []  # (knowledge_base 인덱스, 조건 개수, 커버리지 점수)
 
     for idx, row in enumerate(knowledge_base):
         keywords_field = row.get('keywords', '') or ''
@@ -169,14 +189,27 @@ def keyword_match(user_input):
             conditions = [c.strip() for c in kw_group.split('+') if c.strip()]
             if not conditions:
                 continue
-            if all(cond in word_candidates for cond in conditions):
-                candidates.append((idx, len(conditions)))
+            if not all(cond in word_candidates for cond in conditions):
+                continue
+
+            if content_tokens:
+                covered = sum(
+                    1 for t in content_tokens
+                    if any(cond in t or t in cond for cond in conditions)
+                )
+                coverage_score = covered / len(content_tokens)
+            else:
+                coverage_score = 1.0  # 명사 추출이 안 되면(예: nlp 없음) 기존 방식대로 통과
+
+            # 조건이 명사를 전부 커버하면 무조건 통과, 아니면 임계값 이상일 때만 통과
+            if coverage_score >= coverage_threshold:
+                candidates.append((idx, len(conditions), coverage_score))
 
     if not candidates:
         return None
 
-    # 조건 개수가 많을수록(=더 구체적인 질문일수록) 우선 매칭
-    candidates.sort(key=lambda x: -x[1])
+    # 조건 개수가 많을수록(=더 구체적인 질문일수록) 우선, 그 다음 커버리지 점수 우선
+    candidates.sort(key=lambda x: (-x[1], -x[2]))
     return candidates[0][0]
 
 # ==========================================
