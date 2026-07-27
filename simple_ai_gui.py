@@ -25,9 +25,14 @@ if "last_suggestion" not in st.session_state:
 if "last_intent" not in st.session_state:
     # 💡 [맥락 세션] 급식/날씨/요일처럼 "함수형 의도"를 이어가기 위한 상태.
     # last_topic(임베딩 기반 주제 추적)과는 별개로, edge function이 실행한
-    # 구체적인 기능(rice/weather/dayofweek)을 기억해서 "그럼 모레는?" 같은
+    # 구체적인 기능(rice/weather/dayofweek/subjects)을 기억해서 "그럼 모레는?" 같은
     # 후속 질문에 같은 기능을 재사용할 수 있게 해줍니다.
     st.session_state.last_intent = None
+if "last_class" not in st.session_state:
+    # 💡 [맥락 세션] 시간표(subjects) 조회 시 사용한 학년/반을 기억합니다.
+    # 예: {"grade": "3", "classNm": "2"}
+    # "3학년 2반 시간표" → (답변) → "그럼 화요일은?"처럼 학년/반을 반복 안 물어도 되게 해줍니다.
+    st.session_state.last_class = None
 
 # ==========================================
 # 2. 핵심 로직 함수들 (Streamlit 캐싱 적용)[cite: 6]
@@ -144,7 +149,8 @@ def stream_edge_function(original_input, lat, lon):
         "lat": lat, 
         "lon": lon,
         "last_suggestion": st.session_state.last_suggestion,
-        "last_intent": st.session_state.last_intent  # 💡 직전 턴의 의도(rice/weather/dayofweek 등)를 함께 전송
+        "last_intent": st.session_state.last_intent,  # 💡 직전 턴의 의도(rice/weather/dayofweek/subjects 등)를 함께 전송
+        "last_class": st.session_state.last_class      # 💡 시간표 조회 시 사용한 학년/반 맥락도 함께 전송
     }
     
     try:
@@ -159,11 +165,12 @@ def stream_edge_function(original_input, lat, lon):
                     elif 'reply' in res_json:
                         st.session_state.last_suggestion = res_json.get("suggestion")
 
-                        # 💡 서버가 이번 응답에서 어떤 의도를 사용했는지 알려주면 세션에 저장.
+                        # 💡 서버가 이번 응답에서 어떤 의도/학년반을 사용했는지 알려주면 세션에 저장.
                         # 다음 턴에 이 값을 다시 보내서 "그럼 모레는?" 같은 후속 질문에 이어붙입니다.
                         context = res_json.get("context")
                         if context is not None:
                             st.session_state.last_intent = context.get("last_intent")
+                            st.session_state.last_class = context.get("last_class")
                         
                         # 💡 엣지 펑션의 최종 응답을 한 글자씩 쪼개서 타이핑 효과 부여
                         reply_text = res_json.get('reply', '')
