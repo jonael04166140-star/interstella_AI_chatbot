@@ -4,8 +4,7 @@ import spacy
 import time
 import re
 import json
-import numpy as np
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer
 
 # ==========================================
 # 1. 환경 설정 및 변수[cite: 6]
@@ -13,6 +12,16 @@ from sentence_transformers import SentenceTransformer, util
 SUPABASE_URL = "https://hxpbryalkbdbusrepsne.supabase.co"  
 ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4cGJyeWFsa2JkYnVzcmVwc25lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNzU2MDgsImV4cCI6MjA5ODg1MTYwOH0.vwL_b5eB9PjmXGKnOghV5ahR4Gmcjzr7Jjc9R_of9Jg"                          
 headers = {"apikey": ANON_KEY, "Authorization": f"Bearer {ANON_KEY}", "Content-Type": "application/json"}
+
+# 💡 [자동 백필용] service_role 키는 코드에 직접 넣지 않고 Streamlit secrets에서 읽습니다.
+# 로컬: .streamlit/secrets.toml에 SUPABASE_SERVICE_ROLE_KEY = "..." 추가
+# 배포(Streamlit Cloud): 앱 설정 > Secrets에 동일하게 등록
+SERVICE_ROLE_KEY = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
+service_headers = {
+    "apikey": SERVICE_ROLE_KEY,
+    "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
+    "Content-Type": "application/json",
+}
 
 st.set_page_config(page_title="인터스텔라 AI 챗봇", page_icon="🤖")
 
@@ -79,11 +88,80 @@ def load_database_st():
         st.error(f"DB 로드 실패: {e}")
     return [], [], {}
 
-@st.cache_data(ttl=180, show_spinner="지식 데이터를 AI 벡터 공간에 맵핑 중...")
-def get_db_vectors(sentences):
-    if sentences:
-        return model.encode(sentences)
-    return None
+def sync_missing_embeddings(model):
+    """
+    💡 [자동 백필] knowledge_qa에 embedding이 비어있는(null) 행을 찾아
+    KR-SBERT로 임베딩을 만들어 채워 넣습니다. 로컬에서 스크립트를 따로
+    돌릴 필요 없이, 앱이 켜질 때 세션당 1회 자동으로 실행됩니다.
+
+    ⚠️ 전제조건: knowledge_qa에 새 데이터를 넣는 쪽(Edge Function의 자기학습
+    로직 등)이 embedding 컬럼에 값을 미리 채워넣지 않아야 합니다. 만약 그쪽에서
+    Gemini 등 다른 모델로 이미 값을 채워버리면, 여기서는 "null이 아니다"고
+    판단해서 건너뛰고, 결국 벡터 공간이 다시 섞이게 됩니다.
+    """
+    if not SERVICE_ROLE_KEY:
+        # secrets 미설정 시 조용히 건너뜀 (앱의 다른 기능엔 지장 없음)
+        return
+
+    url = f"{SUPABASE_URL}/rest/v1/knowledge_qa?select=id,question,keywords&embedding=is.null"
+    try:
+        res = requests.get(url, headers=service_headers, timeout=15)
+        if res.status_code != 200:
+            return
+        missing_rows = res.json()
+    except Exception:
+        return
+
+    if not missing_rows:
+        return
+
+    for row in missing_rows:
+        question = row.get("question") or ""
+        keywords = (row.get("keywords") or "").replace(",", " ").replace("+", " ")
+        text = f"{question} {keywords}".strip()
+        if not text:
+            continue
+        vector = model.encode(text).tolist()
+        patch_url = f"{SUPABASE_URL}/rest/v1/knowledge_qa?id=eq.{row['id']}"
+        try:
+            requests.patch(patch_url, headers=service_headers, json={"embedding": vector}, timeout=15)
+        except Exception:
+            pass
+
+
+def semantic_search_db(query_text, top_k=2, threshold=0.65):
+    """
+    💡 [DB 스케일업] 예전에는 knowledge_qa 전체를 파이썬 메모리로 끌어와
+    model.encode(전체문장들) 후 util.cos_sim으로 직접 비교했습니다.
+    데이터가 수만 건이 되면 매번 전체를 다시 인코딩/비교해야 해서 느려집니다.
+
+    이제는 '사용자의 질문 하나'만 로컬 모델로 인코딩하고, 실제 유사도 계산은
+    Postgres(pgvector)의 match_knowledge_qa RPC 함수에 맡깁니다. DB에 미리
+    ivfflat/hnsw 인덱스를 걸어두면, 지식 데이터가 아무리 많아져도 인덱스
+    검색이라 속도가 거의 그대로 유지됩니다.
+
+    ⚠️ 주의: 여기서 만드는 쿼리 벡터와 knowledge_qa.embedding 컬럼에 저장된
+    벡터는 반드시 '같은 모델(KR-SBERT)'로 만들어져야 코사인 유사도 비교가
+    의미가 있습니다. Edge Function 쪽 자기학습 로직도 Gemini가 아닌
+    KR-SBERT로 임베딩을 만들도록 맞춰야 합니다 (아래 백필 스크립트 참고).
+    """
+    query_vector = model.encode(query_text).tolist()
+    rpc_url = f"{SUPABASE_URL}/rest/v1/rpc/match_knowledge_qa"
+    payload = {
+        "query_embedding": query_vector,
+        "match_threshold": threshold,
+        "match_count": top_k,
+    }
+    try:
+        res = requests.post(rpc_url, headers=headers, json=payload, timeout=10)
+        if res.status_code == 200:
+            return res.json()
+        else:
+            st.error(f"의미 기반 검색 실패 (HTTP {res.status_code}): {res.text}")
+            return []
+    except Exception as e:
+        st.error(f"의미 기반 검색 통신 오류: {e}")
+        return []
 
 def get_current_location():
     try:
@@ -106,13 +184,16 @@ def get_current_location():
 # 이 시점에만 캐시를 즉시 지워서 Supabase의 최신 데이터를 다시 불러오게 합니다.
 if "app_initialized" not in st.session_state:
     load_database_st.clear()
-    get_db_vectors.clear()
     st.session_state.app_initialized = True
 
 model, nlp = load_ai_model()
 knowledge_base, combined_sentences, TOPIC_KEYWORDS = load_database_st()
-db_vectors = get_db_vectors(combined_sentences)
 current_lat, current_lon = get_current_location()
+
+if "embeddings_synced" not in st.session_state:
+    # 💡 embedding이 비어있는 새 데이터가 있으면 자동으로 채워둡니다 (수동 스크립트 실행 불필요)
+    sync_missing_embeddings(model)
+    st.session_state.embeddings_synced = True
 
 def rewrite_question(user_input):
     if nlp is None: return user_input
@@ -290,7 +371,7 @@ if user_input := st.chat_input("메시지를 입력하세요..."):
         update_topic(processed_input)
         
         # 지식 베이스 검사
-        if db_vectors is None or len(knowledge_base) == 0:
+        if len(knowledge_base) == 0:
             # 💡 기존 st.markdown을 st.write_stream으로 교체하여 타이핑 효과 적용
             full_response = st.write_stream(stream_text("지식 베이스가 비어있습니다. DB를 확인해주세요."))
         else:
@@ -302,20 +383,24 @@ if user_input := st.chat_input("메시지를 입력하세요..."):
                 best_match_index = matched_idx
                 matched_answer = knowledge_base[best_match_index]["answer"]
             else:
-                # 💡 [2차: 임베딩 유사도 폴백] 키워드로 못 잡은 경우에만 의미 기반 검색 사용.
+                # 💡 [2차: 임베딩 유사도 폴백 - DB 스케일업 버전]
+                # 예전: model.encode(전체 DB) 후 파이썬에서 cos_sim 직접 계산 (DB가 커지면 느려짐)
+                # 지금: 쿼리 하나만 인코딩하고, 실제 유사도 검색은 pgvector RPC(match_knowledge_qa)가
+                #       DB 인덱스로 처리 → 지식 데이터가 수만 건이어도 속도 거의 그대로 유지.
                 # 1등과 2등의 점수 차이(margin)가 너무 작으면 "애매한 매칭"으로 보고
                 # edge function(AI 폴백)으로 넘겨 오답 확정을 피합니다.
-                user_vector = model.encode(processed_input)
-                cosine_scores = util.cos_sim(user_vector, db_vectors)[0]
-                sorted_indices = np.argsort(-cosine_scores.numpy())
+                matches = semantic_search_db(processed_input, top_k=2, threshold=0.65)
 
-                best_match_index = sorted_indices[0]
-                best_score = cosine_scores[best_match_index].item()
-                second_score = cosine_scores[sorted_indices[1]].item() if len(sorted_indices) > 1 else 0.0
-                margin = best_score - second_score
+                if matches:
+                    best = matches[0]
+                    best_score = best.get("similarity", 0.0)
+                    second_score = matches[1].get("similarity", 0.0) if len(matches) > 1 else 0.0
+                    margin = best_score - second_score
 
-                if best_score >= 0.65 and margin >= 0.05:
-                    matched_answer = knowledge_base[best_match_index]["answer"]
+                    if best_score >= 0.65 and margin >= 0.05:
+                        matched_answer = best.get("answer")
+                    else:
+                        matched_answer = None
                 else:
                     matched_answer = None
 
