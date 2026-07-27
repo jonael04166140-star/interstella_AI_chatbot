@@ -90,54 +90,11 @@ def load_database_st():
 
 def sync_missing_embeddings(model):
     """
-    💡 [자동 백필] knowledge_qa에 embedding이 비어있는(null) 행을 찾아
-    KR-SBERT로 임베딩을 만들어 채워 넣습니다. 로컬에서 스크립트를 따로
-    돌릴 필요 없이, 앱이 켜질 때 세션당 1회 자동으로 실행됩니다.
-
-    ⚠️ 전제조건: knowledge_qa에 새 데이터를 넣는 쪽(Edge Function의 자기학습
-    로직 등)이 embedding 컬럼에 값을 미리 채워넣지 않아야 합니다. 만약 그쪽에서
-    Gemini 등 다른 모델로 이미 값을 채워버리면, 여기서는 "null이 아니다"고
-    판단해서 건너뛰고, 결국 벡터 공간이 다시 섞이게 됩니다.
-
-    ⚠️ [신규] answer가 "!edgefunction@"로 시작하는 행(급식/날씨/시간표 같은
-    기능 트리거)은 Edge Function 쪽에서 embedding IS NULL 조건으로 골라내는
-    "키워드 매칭 후보 목록"에 항상 포함되어야 합니다. 여기서 embedding을
-    채워버리면 그 순간부터 후보 목록에서 영구히 빠지게 되어 키워드 매칭이
-    깨지므로, 이 행들은 백필 대상에서 명시적으로 제외합니다.
+    💡 [비활성화] 임베딩 백필 기능을 완전히 껐습니다.
+    knowledge_qa.embedding은 이제 항상 null로 유지되며, Edge Function은
+    1단계 키워드 매칭만으로 동작합니다.
     """
-    if not SERVICE_ROLE_KEY:
-        # secrets 미설정 시 조용히 건너뜀 (앱의 다른 기능엔 지장 없음)
-        return
-
-    url = (
-        f"{SUPABASE_URL}/rest/v1/knowledge_qa"
-        f"?select=id,question,keywords,answer"
-        f"&embedding=is.null"
-        f"&answer=not.like.!edgefunction@*"
-    )
-    try:
-        res = requests.get(url, headers=service_headers, timeout=15)
-        if res.status_code != 200:
-            return
-        missing_rows = res.json()
-    except Exception:
-        return
-
-    if not missing_rows:
-        return
-
-    for row in missing_rows:
-        question = row.get("question") or ""
-        keywords = (row.get("keywords") or "").replace(",", " ").replace("+", " ")
-        text = f"{question} {keywords}".strip()
-        if not text:
-            continue
-        vector = model.encode(text).tolist()
-        patch_url = f"{SUPABASE_URL}/rest/v1/knowledge_qa?id=eq.{row['id']}"
-        try:
-            requests.patch(patch_url, headers=service_headers, json={"embedding": vector}, timeout=15)
-        except Exception:
-            pass
+    return
 
 
 def semantic_search_db(query_text, top_k=2, threshold=0.65):
