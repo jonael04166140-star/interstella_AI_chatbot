@@ -41,7 +41,7 @@ def load_ai_model():
         nlp = None
     return model, nlp
 
-@st.cache_data(show_spinner="데이터베이스를 동기화하는 중입니다...")
+@st.cache_data(ttl=60, show_spinner="데이터베이스를 동기화하는 중입니다...")
 def load_database_st():
     url = f"{SUPABASE_URL}/rest/v1/knowledge_qa?select=question,answer,category,keywords"
     topic_keywords = {}
@@ -74,7 +74,7 @@ def load_database_st():
         st.error(f"DB 로드 실패: {e}")
     return [], [], {}
 
-@st.cache_data(show_spinner="지식 데이터를 AI 벡터 공간에 맵핑 중...")
+@st.cache_data(ttl=60, show_spinner="지식 데이터를 AI 벡터 공간에 맵핑 중...")
 def get_db_vectors(sentences):
     if sentences:
         return model.encode(sentences)
@@ -88,15 +88,17 @@ def get_current_location():
         return 35.415, 127.873
 
 # ==========================================
-# 💡 [자동 캐시 갱신] 사이트 접속 또는 새로고침(F5) 시 DB 캐시를 자동으로 비웁니다.
+# 💡 [자동 캐시 갱신] 두 가지 방식을 함께 적용
+#   1) 사이트 접속/새로고침 시: session_state가 초기화되는 것을 감지해서 즉시 캐시를 비웁니다.
+#   2) 대화 도중에도: 캐시에 ttl=60(초)을 걸어둬서, 60초가 지나면 다음 메시지를 보낼 때
+#      (Streamlit은 메시지를 보낼 때마다 스크립트 전체를 다시 실행하므로) 자동으로
+#      Supabase에서 최신 데이터를 다시 불러옵니다. 새로고침 없이도 최신화됩니다.
 # ==========================================
 # Streamlit은 브라우저를 새로고침하면 웹소켓 연결이 새로 맺어지며 st.session_state가
 # 완전히 초기화됩니다. 반면 챗봇에 메시지를 입력해서 발생하는 rerun은 같은 세션이
 # 유지되어 session_state가 그대로 남습니다.
 # 즉 "app_initialized가 아직 없는 시점 = 사이트 접속/새로고침 시점"이므로,
-# 이 시점에만 캐시를 지워서 Supabase의 최신 데이터를 다시 불러오게 합니다.
-# (매 메시지마다 캐시를 지우면 매번 임베딩을 다시 계산해야 해서 느려지므로,
-#  같은 세션 안에서는 캐시를 유지하는 게 맞습니다.)
+# 이 시점에만 캐시를 즉시 지워서 Supabase의 최신 데이터를 다시 불러오게 합니다.
 if "app_initialized" not in st.session_state:
     load_database_st.clear()
     get_db_vectors.clear()
