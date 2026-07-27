@@ -74,16 +74,11 @@ def load_database_st():
         st.error(f"DB 로드 실패: {e}")
     return [], [], {}
 
-model, nlp = load_ai_model()
-knowledge_base, combined_sentences, TOPIC_KEYWORDS = load_database_st()
-
 @st.cache_data(show_spinner="지식 데이터를 AI 벡터 공간에 맵핑 중...")
 def get_db_vectors(sentences):
     if sentences:
         return model.encode(sentences)
     return None
-
-db_vectors = get_db_vectors(combined_sentences)
 
 def get_current_location():
     try:
@@ -92,6 +87,24 @@ def get_current_location():
     except:
         return 35.415, 127.873
 
+# ==========================================
+# 💡 [자동 캐시 갱신] 사이트 접속 또는 새로고침(F5) 시 DB 캐시를 자동으로 비웁니다.
+# ==========================================
+# Streamlit은 브라우저를 새로고침하면 웹소켓 연결이 새로 맺어지며 st.session_state가
+# 완전히 초기화됩니다. 반면 챗봇에 메시지를 입력해서 발생하는 rerun은 같은 세션이
+# 유지되어 session_state가 그대로 남습니다.
+# 즉 "app_initialized가 아직 없는 시점 = 사이트 접속/새로고침 시점"이므로,
+# 이 시점에만 캐시를 지워서 Supabase의 최신 데이터를 다시 불러오게 합니다.
+# (매 메시지마다 캐시를 지우면 매번 임베딩을 다시 계산해야 해서 느려지므로,
+#  같은 세션 안에서는 캐시를 유지하는 게 맞습니다.)
+if "app_initialized" not in st.session_state:
+    load_database_st.clear()
+    get_db_vectors.clear()
+    st.session_state.app_initialized = True
+
+model, nlp = load_ai_model()
+knowledge_base, combined_sentences, TOPIC_KEYWORDS = load_database_st()
+db_vectors = get_db_vectors(combined_sentences)
 current_lat, current_lon = get_current_location()
 
 def rewrite_question(user_input):
