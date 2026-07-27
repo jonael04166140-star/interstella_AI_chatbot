@@ -79,7 +79,7 @@ def load_database_st():
         st.error(f"DB 로드 실패: {e}")
     return [], [], {}
 
-@st.cache_data(ttl=60, show_spinner="지식 데이터를 AI 벡터 공간에 맵핑 중...")
+@st.cache_data(ttl=180, show_spinner="지식 데이터를 AI 벡터 공간에 맵핑 중...")
 def get_db_vectors(sentences):
     if sentences:
         return model.encode(sentences)
