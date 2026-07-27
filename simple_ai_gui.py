@@ -134,6 +134,41 @@ def update_topic(user_input):
             st.session_state.last_topic = topic
             break
 
+def keyword_match(user_input):
+    """
+    💡 [1차 검색 - 키워드 AND 조건 매칭]
+    edge function의 `conditions.every(cond => intentMessage.includes(cond))` 로직을
+    파이썬 쪽에도 동일하게 적용합니다.
+
+    예) knowledge_base 행의 keywords 컬럼에 "인터스텔라+가입,인터스텔라+지원" 처럼
+    '+'로 AND 조건을, ','로 OR(여러 조합)을 표현해두면,
+    "인터스텔라에 들어가려면 어떻게 해야해?" 라는 질문은 조건 2개짜리(인터스텔라+가입류)에
+    먼저 걸리고, "인터스텔라가 뭐야?"처럼 단일 키워드(인터스텔라)만 있는 일반 정의 항목보다
+    우선순위를 갖게 됩니다. (조건 개수가 많을수록 더 구체적인 의도이므로 먼저 매칭)
+
+    임베딩 유사도(코사인 유사도)만으로는 "인터스텔라가 뭐야"와 "인터스텔라 가입 방법"처럼
+    핵심 개체명이 겹치는 문장들을 잘 구분하지 못하기 때문에, 이 1차 매칭이 실패했을 때만
+    임베딩 검색으로 폴백하도록 구성합니다.
+    """
+    clean_input = user_input.replace(" ", "")
+    candidates = []  # (knowledge_base 인덱스, 조건 개수)
+
+    for idx, row in enumerate(knowledge_base):
+        keywords_field = row.get('keywords', '') or ''
+        for kw_group in keywords_field.split(','):
+            conditions = [c.strip() for c in kw_group.split('+') if c.strip()]
+            if not conditions:
+                continue
+            if all(cond.replace(" ", "") in clean_input for cond in conditions):
+                candidates.append((idx, len(conditions)))
+
+    if not candidates:
+        return None
+
+    # 조건 개수가 많을수록(=더 구체적인 질문일수록) 우선 매칭
+    candidates.sort(key=lambda x: -x[1])
+    return candidates[0][0]
+
 # ==========================================
 # 3. 출력 제너레이터 (스트리밍 타이핑 효과)[cite: 6]
 # ==========================================
@@ -216,15 +251,32 @@ if user_input := st.chat_input("메시지를 입력하세요..."):
             # 💡 기존 st.markdown을 st.write_stream으로 교체하여 타이핑 효과 적용
             full_response = st.write_stream(stream_text("지식 베이스가 비어있습니다. DB를 확인해주세요."))
         else:
-            user_vector = model.encode(processed_input)
-            cosine_scores = util.cos_sim(user_vector, db_vectors)[0]
-            
-            best_match_index = np.argmax(cosine_scores)
-            best_score = cosine_scores[best_match_index].item()
-            
-            if best_score >= 0.60:
+            # 💡 [1차: 키워드 AND 매칭] 정의성 질문("~가 뭐야")과 절차성 질문("~하려면 어떻게")처럼
+            # 핵심 개체명은 같지만 의도가 다른 질문을 구분하기 위해 키워드 매칭을 먼저 시도합니다.
+            matched_idx = keyword_match(processed_input)
+
+            if matched_idx is not None:
+                best_match_index = matched_idx
                 matched_answer = knowledge_base[best_match_index]["answer"]
-                
+            else:
+                # 💡 [2차: 임베딩 유사도 폴백] 키워드로 못 잡은 경우에만 의미 기반 검색 사용.
+                # 1등과 2등의 점수 차이(margin)가 너무 작으면 "애매한 매칭"으로 보고
+                # edge function(AI 폴백)으로 넘겨 오답 확정을 피합니다.
+                user_vector = model.encode(processed_input)
+                cosine_scores = util.cos_sim(user_vector, db_vectors)[0]
+                sorted_indices = np.argsort(-cosine_scores.numpy())
+
+                best_match_index = sorted_indices[0]
+                best_score = cosine_scores[best_match_index].item()
+                second_score = cosine_scores[sorted_indices[1]].item() if len(sorted_indices) > 1 else 0.0
+                margin = best_score - second_score
+
+                if best_score >= 0.65 and margin >= 0.05:
+                    matched_answer = knowledge_base[best_match_index]["answer"]
+                else:
+                    matched_answer = None
+
+            if matched_answer is not None:
                 if "!edgefunction@" in matched_answer:
                     full_response = st.write_stream(stream_edge_function(processed_input, current_lat, current_lon))
                 else:
