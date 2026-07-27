@@ -134,23 +134,33 @@ def update_topic(user_input):
             st.session_state.last_topic = topic
             break
 
+def get_word_candidates(user_input):
+    """
+    💡 사용자 입력을 '완전한 단어(토큰)' 단위 후보 집합으로 변환합니다.
+    """
+    if nlp is None:
+        # spaCy 모델이 없으면 최소한의 안전장치로 공백 기준 분리만 사용
+        return set(user_input.split())
+
+    tokens = [tok.text for tok in nlp(user_input) if tok.text.strip()]
+    candidates = set(tokens)
+    # "2" + "학년" 처럼 숫자와 명사가 분리되는 경우를 대비해 인접 토큰 2개를 붙인 것도 후보에 포함
+    candidates.update(a + b for a, b in zip(tokens, tokens[1:]))
+    return candidates
+
 def keyword_match(user_input):
     """
-    💡 [1차 검색 - 키워드 AND 조건 매칭]
+    💡 [1차 검색 - 키워드 AND 조건 매칭 (토큰 단위)]
     edge function의 `conditions.every(cond => intentMessage.includes(cond))` 로직을
-    파이썬 쪽에도 동일하게 적용합니다.
+    파이썬 쪽에도 적용하되, 부분 문자열이 아니라 '완전한 단어' 단위로 비교합니다.
 
-    예) knowledge_base 행의 keywords 컬럼에 "인터스텔라+가입,인터스텔라+지원" 처럼
+    knowledge_base 행의 keywords 컬럼에 "인터스텔라+가입,인터스텔라+지원" 처럼
     '+'로 AND 조건을, ','로 OR(여러 조합)을 표현해두면,
     "인터스텔라에 들어가려면 어떻게 해야해?" 라는 질문은 조건 2개짜리(인터스텔라+가입류)에
     먼저 걸리고, "인터스텔라가 뭐야?"처럼 단일 키워드(인터스텔라)만 있는 일반 정의 항목보다
-    우선순위를 갖게 됩니다. (조건 개수가 많을수록 더 구체적인 의도이므로 먼저 매칭)
-
-    임베딩 유사도(코사인 유사도)만으로는 "인터스텔라가 뭐야"와 "인터스텔라 가입 방법"처럼
-    핵심 개체명이 겹치는 문장들을 잘 구분하지 못하기 때문에, 이 1차 매칭이 실패했을 때만
-    임베딩 검색으로 폴백하도록 구성합니다.
+    우선순위를 갖게 됩니다.
     """
-    clean_input = user_input.replace(" ", "")
+    word_candidates = get_word_candidates(user_input)
     candidates = []  # (knowledge_base 인덱스, 조건 개수)
 
     for idx, row in enumerate(knowledge_base):
@@ -159,7 +169,7 @@ def keyword_match(user_input):
             conditions = [c.strip() for c in kw_group.split('+') if c.strip()]
             if not conditions:
                 continue
-            if all(cond.replace(" ", "") in clean_input for cond in conditions):
+            if all(cond in word_candidates for cond in conditions):
                 candidates.append((idx, len(conditions)))
 
     if not candidates:
