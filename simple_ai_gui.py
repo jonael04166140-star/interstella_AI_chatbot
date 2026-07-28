@@ -24,7 +24,7 @@ service_headers = {
     "Content-Type": "application/json",
 }
 
-st.set_page_config(page_title="인터스텔라 AI 챗봇", page_icon="🤖")
+st.set_page_config(page_title="산청고 인터스텔라 동아리 AI 챗봇 밀키웨이", page_icon="🤖")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -435,7 +435,7 @@ def scroll_to_bottom():
 # ==========================================
 # 4. Streamlit UI 구성[cite: 6]
 # ==========================================
-st.title("인터스텔라 AI 챗봇")
+st.title("AI 챗봇 밀키웨이")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
