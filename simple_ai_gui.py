@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import spacy
 import time
@@ -23,7 +24,7 @@ service_headers = {
     "Content-Type": "application/json",
 }
 
-st.set_page_config(page_title="산청고 AI 챗봇 밀키웨이", page_icon="🤖")
+st.set_page_config(page_title="인터스텔라 AI 챗봇", page_icon="🤖")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -400,9 +401,41 @@ def send_feedback(vote: str):
     st.session_state.pending_feedback = None
 
 # ==========================================
+# 💡 [자동 스크롤] 답변이 끝나거나 rerun이 일어난 뒤 항상 페이지 최하단으로 이동시켜,
+# 채팅 입력칸이나 피드백 버튼이 화면 위로 밀려 안 보이는 문제를 방지합니다.
+# Streamlit은 각 요소를 iframe으로 감싸므로, window.parent.document로 실제
+# 페이지 DOM에 접근해서 스크롤 컨테이너 후보 여러 개를 순서대로 시도합니다.
+# ==========================================
+def scroll_to_bottom():
+    components.html(
+        """
+        <script>
+        function scrollToBottom() {
+            const doc = window.parent.document;
+            const candidates = [
+                doc.querySelector('[data-testid="stMain"]'),
+                doc.querySelector('[data-testid="stAppViewContainer"]'),
+                doc.querySelector('section.main'),
+            ];
+            for (const el of candidates) {
+                if (el) {
+                    el.scrollTop = el.scrollHeight;
+                    break; // 첫 번째로 찾은(실제 존재하는) 컨테이너 하나에만 적용
+                }
+            }
+        }
+        scrollToBottom();
+        setTimeout(scrollToBottom, 150);
+        setTimeout(scrollToBottom, 400);
+        </script>
+        """,
+        height=0,
+    )
+
+# ==========================================
 # 4. Streamlit UI 구성[cite: 6]
 # ==========================================
-st.title("AI 챗봇 밀키웨이")
+st.title("인터스텔라 AI 챗봇")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -492,4 +525,12 @@ if user_input:
 
     # 💡 답변 출력 직후 즉시 재실행하여, pending_feedback이 설정된 경우
     # 사용자가 다음 메시지를 입력할 때까지 기다리지 않고 바로 피드백 버튼을 띄웁니다.
+    # (스크롤은 여기서 하지 않습니다 - rerun과 거의 동시에 발생하는 화면 재구성 때문에
+    #  race condition으로 오히려 맨 위로 튀는 문제가 있었습니다. 대신 rerun 이후
+    #  새로 그려진 화면에서 아래쪽 else 분기가 스크롤을 담당합니다.)
     st.rerun()
+else:
+    # 💡 이번 실행에서 새 메시지/버튼 클릭이 없어 rerun 없이 스크립트가 끝나는 경우
+    # (페이지 최초 로드, rerun 직후 재실행, 피드백 버튼만 떠 있는 상태) 항상 여기서
+    # 최종적으로 완성된 화면을 대상으로 최하단 스크롤을 실행합니다.
+    scroll_to_bottom()
