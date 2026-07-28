@@ -489,3 +489,7 @@ if user_input:
                 full_response = st.write_stream(stream_edge_function(processed_input, current_lat, current_lon))
                 
         st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+    # 💡 답변 출력 직후 즉시 재실행하여, pending_feedback이 설정된 경우
+    # 사용자가 다음 메시지를 입력할 때까지 기다리지 않고 바로 피드백 버튼을 띄웁니다.
+    st.rerun()
