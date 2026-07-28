@@ -42,6 +42,16 @@ if "last_class" not in st.session_state:
     # 예: {"grade": "3", "classNm": "2"}
     # "3학년 2반 시간표" → (답변) → "그럼 화요일은?"처럼 학년/반을 반복 안 물어도 되게 해줍니다.
     st.session_state.last_class = None
+if "pending_feedback" not in st.session_state:
+    # 💡 [RLHF] 직전 답변이 knowledge_qa 항목(reliability < 9.0)에서 나온 경우,
+    # edge function이 돌려준 {"qa_id":..., "delta":..., "enabled": true}가 여기 저장됩니다.
+    # 값이 있으면 채팅 입력창 대신 좋아요/싫어요 버튼을 띄웁니다.
+    st.session_state.pending_feedback = None
+if "last_reask" not in st.session_state:
+    # 💡 [RLHF] 직전 답변이 reliability 5~8.9(약간 신뢰) 항목이었을 때만 채워지는 컨텍스트.
+    # 사용자가 "AI한테 다시 물어봐줘"라고 입력하면 이 정보를 그대로 서버에 돌려줘서
+    # 같은 항목을 참고자료 삼아 Gemini가 다시 답하게 합니다.
+    st.session_state.last_reask = None
 
 # ==========================================
 # 2. 핵심 로직 함수들 (Streamlit 캐싱 적용)[cite: 6]
@@ -277,7 +287,8 @@ def stream_edge_function(original_input, lat, lon):
         "lon": lon,
         "last_suggestion": st.session_state.last_suggestion,
         "last_intent": st.session_state.last_intent,  # 💡 직전 턴의 의도(rice/weather/dayofweek/subjects 등)를 함께 전송
-        "last_class": st.session_state.last_class      # 💡 시간표 조회 시 사용한 학년/반 맥락도 함께 전송
+        "last_class": st.session_state.last_class,     # 💡 시간표 조회 시 사용한 학년/반 맥락도 함께 전송
+        "last_reask": st.session_state.last_reask       # 💡 [RLHF] "AI한테 다시 물어봐줘" 트리거를 위한 컨텍스트
     }
     
     try:
@@ -298,6 +309,15 @@ def stream_edge_function(original_input, lat, lon):
                         if context is not None:
                             st.session_state.last_intent = context.get("last_intent")
                             st.session_state.last_class = context.get("last_class")
+
+                            # 💡 [RLHF] 이번 답변이 좋아요/싫어요 피드백 대상이면
+                            # (reliability < 9.0인 knowledge_qa 항목에서 나온 답변) 저장해두고,
+                            # 다음 렌더링에서 chat_input 대신 버튼을 띄웁니다.
+                            feedback = context.get("feedback")
+                            st.session_state.pending_feedback = feedback if feedback and feedback.get("enabled") else None
+
+                            # 💡 [RLHF] 5~8.9 등급 답변이면 "AI한테 다시 물어봐줘" 재질문 컨텍스트를 저장
+                            st.session_state.last_reask = context.get("reask")
                         
                         # 💡 엣지 펑션의 최종 응답을 한 글자씩 쪼개서 타이핑 효과 부여
                         reply_text = res_json.get('reply', '')
@@ -317,6 +337,31 @@ def stream_edge_function(original_input, lat, lon):
             time.sleep(0.03)
 
 # ==========================================
+# 💡 [RLHF] 좋아요/싫어요 피드백 전송
+# ==========================================
+def send_feedback(vote: str):
+    """
+    vote: "up" 또는 "down".
+    edge function에 action="feedback"으로 요청을 보내면, 서버가 해당
+    knowledge_qa 행의 reliability를 등급별 delta(0.2 / 0.5)만큼 조정합니다.
+    (reliability >= 9.0인 항목은 애초에 pending_feedback이 설정되지 않으므로 여기까지 오지 않음)
+    """
+    fb = st.session_state.pending_feedback
+    if not fb:
+        return
+    edge_url = f"{SUPABASE_URL}/functions/v1/functional_answer"
+    try:
+        requests.post(
+            edge_url,
+            json={"action": "feedback", "qa_id": fb.get("qa_id"), "vote": vote},
+            headers=headers,
+            timeout=10,
+        )
+    except Exception as e:
+        st.error(f"피드백 전송 실패: {e}")
+    st.session_state.pending_feedback = None
+
+# ==========================================
 # 4. Streamlit UI 구성[cite: 6]
 # ==========================================
 st.title("인터스텔라 AI 챗봇")
@@ -325,7 +370,25 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if user_input := st.chat_input("메시지를 입력하세요..."):
+# 💡 [RLHF] 직전 답변에 피드백이 걸려있으면, 채팅 입력칸을 잠시 가리고
+# 그 자리에 좋아요/싫어요 버튼만 띄웁니다. 버튼을 누르면 피드백이 전송되고
+# 다시 원래 입력창으로 돌아옵니다.
+if st.session_state.pending_feedback:
+    st.markdown("**방금 답변, 도움이 되었나요?**")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("👍 좋아요", use_container_width=True, key="feedback_up_btn"):
+            send_feedback("up")
+            st.rerun()
+    with col2:
+        if st.button("👎 싫어요", use_container_width=True, key="feedback_down_btn"):
+            send_feedback("down")
+            st.rerun()
+    user_input = None
+else:
+    user_input = st.chat_input("메시지를 입력하세요...")
+
+if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
