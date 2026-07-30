@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import spacy
 import time
@@ -47,6 +48,23 @@ if "pending_feedback" not in st.session_state:
     # edge function이 돌려준 {"qa_id":..., "delta":..., "enabled": true, "question":..., "raw_answer":...}가
     # 여기 저장됩니다. 값이 있으면 채팅 입력창 대신 "좋아요 / 싫어요 / 자세한 대답" 버튼 3개를 띄웁니다.
     st.session_state.pending_feedback = None
+
+# ==========================================
+# 💡 [자동 스크롤] rerun 시 최상단으로 튀는 문제 방지
+# 스크립트가 그려질 때마다(특히 rerun 직후) 맨 아래로 스크롤을 강제 이동시킵니다.
+# ==========================================
+def scroll_to_bottom():
+    components.html(
+        """
+        <script>
+            window.parent.document.querySelector('section.main').scrollTo(
+                0,
+                window.parent.document.querySelector('section.main').scrollHeight
+            );
+        </script>
+        """,
+        height=0,
+    )
 
 # ==========================================
 # 2. 핵심 로직 함수들 (Streamlit 캐싱 적용)[cite: 6]
@@ -493,3 +511,10 @@ if user_input:
     # 💡 답변 출력 직후 즉시 재실행하여, pending_feedback이 설정된 경우
     # 사용자가 다음 메시지를 입력할 때까지 기다리지 않고 바로 피드백 버튼을 띄웁니다.
     st.rerun()
+
+# ==========================================
+# 💡 [자동 스크롤] 스크립트가 끝나는 마지막 지점에서 항상 실행됩니다.
+# 좋아요/싫어요/자세한 대답 버튼이 떠 있는 렌더링(위의 if user_input 블록을 타지
+# 않는 경우)에도 이 줄까지는 항상 도달하므로, 매번 화면을 맨 아래로 내려줍니다.
+# ==========================================
+scroll_to_bottom()
