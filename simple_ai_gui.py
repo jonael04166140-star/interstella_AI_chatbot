@@ -54,13 +54,41 @@ if "pending_feedback" not in st.session_state:
 # 스크립트가 그려질 때마다(특히 rerun 직후) 맨 아래로 스크롤을 강제 이동시킵니다.
 # ==========================================
 def scroll_to_bottom():
+    # 💡 [수정] 예전 셀렉터('section.main')는 최신 Streamlit 버전의 DOM 구조와
+    # 맞지 않아 아무 요소도 못 찾고 조용히 실패하는 경우가 있었습니다. 그 결과
+    # Streamlit이 rerun 시 기본으로 맨 위로 스크롤을 올려버리는 동작을 이 스크립트가
+    # 되돌리지 못해서, 특히 좋아요/싫어요/자세한 대답 버튼이 뜨는 시점(= rerun 직후)에
+    # 화면이 계속 최상단에 머무는 문제로 이어졌습니다.
+    #
+    # 아래에서는
+    #  1) 버전별로 달라질 수 있는 셀렉터 후보를 여러 개 시도하고
+    #  2) 버튼/텍스트가 아주 살짝 늦게 그려지는 경우까지 잡기 위해
+    #     0ms/50ms/150ms/300ms/600ms 지연을 두고 여러 번 재시도합니다.
     components.html(
         """
         <script>
-            window.parent.document.querySelector('section.main').scrollTo(
-                0,
-                window.parent.document.querySelector('section.main').scrollHeight
-            );
+        (function() {
+            function getMainContainer() {
+                const doc = window.parent.document;
+                return (
+                    doc.querySelector('section[data-testid="stMain"]') ||
+                    doc.querySelector('[data-testid="stAppViewContainer"] section.main') ||
+                    doc.querySelector('section.main') ||
+                    doc.querySelector('[data-testid="stAppViewContainer"]')
+                );
+            }
+
+            function scrollToBottom() {
+                const el = getMainContainer();
+                if (el) {
+                    el.scrollTop = el.scrollHeight;
+                }
+            }
+
+            [0, 50, 150, 300, 600].forEach(function(delay) {
+                setTimeout(scrollToBottom, delay);
+            });
+        })();
         </script>
         """,
         height=0,
