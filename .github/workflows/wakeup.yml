@@ -1,0 +1,44 @@
+name: Keep Streamlit App Awake
+
+on:
+  schedule:
+    # 6시간마다 자동 실행 (예: 0시, 6시, 12시, 18시)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # 내가 원할 때 수동으로 테스트해 볼 수 있는 버튼 추가
+
+jobs:
+  wake-up:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Visit Streamlit App
+        run: |
+          python -c "
+          from playwright.sync_api import sync_playwright
+          import time
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto('https://interstellaaichatbot-vdfezfgxret2ayhymnaeg6.streamlit.app/')
+              
+              # 앱이 잠들어 있을 경우 깨우기 버튼 자동 클릭
+              try:
+                  button = page.get_by_role('button', name='Yes, get this app back up!')
+                  if button.is_visible(timeout=5000):
+                      button.click()
+              except:
+                  pass
+                  
+              time.sleep(15) # 앱 화면이 완전히 켜질 때까지 15초 대기
+              browser.close()
+          "
