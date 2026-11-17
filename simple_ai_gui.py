@@ -29,36 +29,40 @@ st.set_page_config(page_title="산청고 AI 챗봇 밀키웨이", page_icon="�
 # ==========================================
 CUSTOM_CSS = """
 <style>
-/* ===== 색상 · 폰트 변수 (라이트/다크 자동) ===== */
+/* ===== 색상 · 폰트 변수 (라이트/다크 자동) · 따뜻한 크림 + 테라코타 톤 ===== */
 :root {
-    --mw-bg: #ffffff;
-    --mw-text: #111111;
-    --mw-recv: #e9e9eb;
-    --mw-sent: #0b84fe;
-    --mw-link: #0a66d6;
-    --mw-muted: #8e8e93;
-    --mw-bar: rgba(250, 250, 250, 0.78);
-    --mw-line: rgba(60, 60, 67, 0.18);
-    --mw-line-strong: #c7c7cc;
-    --mw-dot: #9a9aa0;
-    --mw-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
-    --mw-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+    --mw-bg: #faf9f5;
+    --mw-text: #1f1e1d;
+    --mw-recv: #f0eee6;
+    --mw-sent: #c0603f;
+    --mw-link: #b4502e;
+    --mw-muted: #8a867c;
+    --mw-bar: rgba(250, 249, 245, 0.82);
+    --mw-line: rgba(31, 30, 29, 0.12);
+    --mw-line-strong: #dad7cb;
+    --mw-dot: #c0603f;
+    --mw-shadow: 0 1px 2px rgba(31, 30, 29, 0.06);
+    --mw-input-shadow: 0 2px 12px rgba(31, 30, 29, 0.06);
+    --mw-font: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mw-serif: "Noto Serif KR", "Nanum Myeongjo", "Apple SD Gothic Neo", Georgia, "Times New Roman", serif;
 
     /* 말풍선 셀렉터에서 공통으로 쓰는 값 */
     --mw-radius: 1.2rem;
 }
 @media (prefers-color-scheme: dark) {
     :root {
-        --mw-bg: #000000;
-        --mw-text: #f5f5f7;
-        --mw-recv: #262629;
-        --mw-sent: #0a84ff;
-        --mw-link: #64a8ff;
-        --mw-bar: rgba(22, 22, 24, 0.78);
-        --mw-line: rgba(84, 84, 88, 0.55);
-        --mw-line-strong: #3a3a3c;
-        --mw-dot: #7c7c82;
+        --mw-bg: #262624;
+        --mw-text: #f0eee6;
+        --mw-recv: #33322f;
+        --mw-sent: #c4623f;
+        --mw-link: #e8a07f;
+        --mw-muted: #9a968c;
+        --mw-bar: rgba(38, 38, 36, 0.82);
+        --mw-line: rgba(240, 238, 230, 0.14);
+        --mw-line-strong: #4a4945;
+        --mw-dot: #d97757;
         --mw-shadow: none;
+        --mw-input-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
     }
 }
 
@@ -70,7 +74,7 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
 .stApp, .stApp button, .stApp textarea {font-family: var(--mw-font) !important;}
 .block-container {max-width: 720px; padding: 6.2rem 1rem 7rem;}
 .block-container [data-testid="stVerticalBlock"] {gap: 0.28rem;}
-* {scrollbar-width: thin; scrollbar-color: rgba(142, 142, 147, 0.4) transparent;}
+* {scrollbar-width: thin; scrollbar-color: rgba(138, 134, 124, 0.4) transparent;}
 
 /* 답변이 오는 동안 이전 말풍선이 흐려졌다 돌아오는 깜빡임 방지 */
 [data-stale="true"] {opacity: 1 !important; transition: none !important;}
@@ -89,9 +93,9 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
     30%           {opacity: 1;    transform: translateY(-4px);}
 }
 @keyframes mw-pulse {
-    0%   {box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.55);}
-    70%  {box-shadow: 0 0 0 6px rgba(52, 199, 89, 0);}
-    100% {box-shadow: 0 0 0 0 rgba(52, 199, 89, 0);}
+    0%   {box-shadow: 0 0 0 0 rgba(91, 154, 106, 0.5);}
+    70%  {box-shadow: 0 0 0 6px rgba(91, 154, 106, 0);}
+    100% {box-shadow: 0 0 0 0 rgba(91, 154, 106, 0);}
 }
 
 /* ===== 상단 연락처 바 (블러) ===== */
@@ -109,15 +113,16 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
 .mw-avatar {
     width: 46px; height: 46px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(160deg, #8d92f7, #6366f1 60%, #7c3aed);
+    background: linear-gradient(160deg, #e39574, #c0603f 65%, #a84e30);
+    font-family: var(--mw-serif);
     color: #fff; font-weight: 700; font-size: 1.15rem;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+    box-shadow: 0 2px 8px rgba(192, 96, 63, 0.32);
 }
 .mw-online {
     position: absolute; right: 0; bottom: 1px; width: 12px; height: 12px; border-radius: 50%;
-    background: #34c759; border: 2px solid var(--mw-bg); animation: mw-pulse 2.4s infinite;
+    background: #5b9a6a; border: 2px solid var(--mw-bg); animation: mw-pulse 2.4s infinite;
 }
-.mw-name {font-size: 0.74rem; font-weight: 600; color: var(--mw-text);}
+.mw-name {font-family: var(--mw-serif); font-size: 0.82rem; font-weight: 700; color: var(--mw-text);}
 .mw-name span {color: var(--mw-muted); margin-left: 2px; font-weight: 400;}
 .mw-sub {font-size: 0.62rem; color: var(--mw-muted); margin-top: -0.1rem;}
 
@@ -174,50 +179,30 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
     font-size: 0.88em; padding: 0.1em 0.38em; border-radius: 6px; background: rgba(120, 120, 128, 0.18);
 }
 [data-testid="stChatMessageContent"] a {text-decoration: underline; text-underline-offset: 2px;}
-[data-testid="stChatMessageContent"]::before,
-[data-testid="stChatMessageContent"]::after {content: ""; position: absolute; bottom: 0; height: 20px;}
 
-/* ----- 받은 메시지 (왼쪽 · 회색) ----- */
+/* ----- 받은 메시지 (왼쪽 · 크림) ----- */
 [data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] {
     background: var(--mw-recv); color: var(--mw-text); margin-right: auto !important;
-    border-bottom-left-radius: 0.3rem 0.2rem;
-    transform-origin: bottom left; animation: mw-pop 0.36s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    border: 1px solid var(--mw-line); border-bottom-left-radius: 0.4rem;
+    animation: mw-rise 0.35s ease-out;
 }
 [data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] a {color: var(--mw-link);}
-[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"]::before {
-    z-index: -1; left: -7px; width: 20px; background: var(--mw-recv); border-bottom-right-radius: 15px;
-}
-[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"]::after {
-    z-index: 1; left: -10px; width: 10px; background: var(--mw-bg); border-bottom-right-radius: 10px;
-}
 
-/* ----- 보낸 메시지 (오른쪽 · 파랑) ----- */
+/* ----- 보낸 메시지 (오른쪽 · 테라코타) ----- */
 [data-testid="stChatMessageContent"][aria-label="Chat message from user"] {
     background: var(--mw-sent); color: #fff; margin-left: auto !important;
-    border-bottom-right-radius: 0.3rem 0.2rem;
-    transform-origin: bottom right; animation: mw-pop 0.36s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    border: 1px solid transparent; border-bottom-right-radius: 0.4rem;
+    animation: mw-rise 0.35s ease-out;
 }
 [data-testid="stChatMessageContent"][aria-label="Chat message from user"] * {color: #fff !important;}
 [data-testid="stChatMessageContent"][aria-label="Chat message from user"] code {background: rgba(255, 255, 255, 0.22);}
-[data-testid="stChatMessageContent"][aria-label="Chat message from user"]::before {
-    z-index: -1; right: -7px; width: 20px; background: var(--mw-sent); border-bottom-left-radius: 15px;
-}
-[data-testid="stChatMessageContent"][aria-label="Chat message from user"]::after {
-    z-index: 1; right: -10px; width: 10px; background: var(--mw-bg); border-bottom-left-radius: 10px;
-}
 
-/* ----- 같은 사람이 연속으로 보낸 말풍선: 꼬리는 마지막에만, 간격은 촘촘하게 ----- */
+/* ----- 같은 사람이 연속으로 보낸 말풍선: 모서리를 모두 둥글게 ----- */
 :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {
     border-bottom-right-radius: var(--mw-radius);
 }
 :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {
     border-bottom-left-radius: var(--mw-radius);
-}
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"]::before,
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"]::after,
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"]::before,
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"]::after {
-    display: none;
 }
 /* 말하는 사람이 바뀌면 간격을 조금 더 벌려 대화 흐름이 보이게 */
 :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]) + :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]),
@@ -243,12 +228,12 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
 }
 [data-testid="stChatInput"] {background: transparent !important; border: none !important; box-shadow: none !important;}
 [data-testid="stChatInput"] > div {
-    border-radius: 22px !important; border: 1px solid var(--mw-line-strong) !important;
-    background: var(--mw-bg) !important; box-shadow: none; overflow: hidden;
+    border-radius: 20px !important; border: 1px solid var(--mw-line-strong) !important;
+    background: var(--mw-bg) !important; box-shadow: var(--mw-input-shadow); overflow: hidden;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 [data-testid="stChatInput"] > div:focus-within {
-    border-color: var(--mw-sent) !important; box-shadow: 0 0 0 3px rgba(11, 132, 254, 0.16);
+    border-color: var(--mw-sent) !important; box-shadow: 0 0 0 3px rgba(192, 96, 63, 0.16);
 }
 [data-testid="stChatInput"] > div div, [data-testid="stChatInput"] textarea {
     background: transparent !important; border-radius: 0 !important; box-shadow: none !important;
@@ -256,7 +241,7 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
 [data-testid="stChatInput"] textarea {font-size: 1rem; padding-left: 1.1rem !important; color: var(--mw-text);}
 [data-testid="stChatInput"] textarea::placeholder {color: var(--mw-muted); opacity: 1;}
 [data-testid="stChatInput"] button {
-    border-radius: 50% !important; background: var(--mw-sent) !important; color: #fff !important;
+    border-radius: 12px !important; background: var(--mw-sent) !important; color: #fff !important;
     transition: transform 0.15s, opacity 0.2s;
 }
 [data-testid="stChatInput"] button:hover {transform: scale(1.08);}
@@ -293,14 +278,14 @@ header[data-testid="stHeader"] {background: transparent; height: 0;}
 .st-key-chip_2 {animation-delay: 0.16s;}
 .st-key-chip_3 {animation-delay: 0.24s;}
 [class*="st-key-chip_"] button {
-    border-radius: 999px; border: 1px solid var(--mw-line-strong); background: var(--mw-bg);
+    border-radius: 14px; border: 1px solid var(--mw-line-strong); background: var(--mw-bg);
     padding: 0.5rem 0.8rem; transition: transform 0.15s, background 0.15s, border-color 0.15s;
 }
 [class*="st-key-chip_"] button p {
     color: var(--mw-sent) !important; font-size: 0.9rem; font-weight: 500; line-height: 1.25;
     white-space: normal; word-break: keep-all; overflow: visible; text-overflow: clip;
 }
-[class*="st-key-chip_"] button:hover {background: rgba(11, 132, 254, 0.08); border-color: var(--mw-sent); transform: translateY(-1px);}
+[class*="st-key-chip_"] button:hover {background: rgba(192, 96, 63, 0.09); border-color: var(--mw-sent); transform: translateY(-1px);}
 [class*="st-key-chip_"] button:active {transform: scale(0.96);}
 
 /* ===== 작은 화면 ===== */
