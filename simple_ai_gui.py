@@ -5,8 +5,6 @@ import spacy
 import time
 import re
 import json
-from itertools import chain
-from datetime import datetime, timezone, timedelta
 from sentence_transformers import SentenceTransformer
 
 # ==========================================
@@ -20,296 +18,85 @@ EDGE_URL = f"{SUPABASE_URL}/functions/v1/functional_answer"
 BOT_AVATAR = "🌌"
 USER_AVATAR = "🙂"
 TYPING_DELAY = 0.02
-KST = timezone(timedelta(hours=9))
 
-st.set_page_config(page_title="산청고 AI 챗봇 밀키웨이", page_icon="💬", layout="centered")
+st.set_page_config(page_title="산청고 AI 챗봇 밀키웨이", page_icon="🌌", layout="centered")
 
 # ==========================================
-# 💡 [디자인] 아이폰 메시지(iMessage) 스타일 CSS
+# 💡 [디자인] 챗봇 스타일 CSS
 # ==========================================
 CUSTOM_CSS = """
 <style>
-/* ===== 색상 · 폰트 변수 (라이트/다크 자동) · 따뜻한 크림 + 테라코타 톤 ===== */
-:root {
-    --mw-bg: #faf9f5;
-    --mw-text: #1f1e1d;
-    --mw-recv: #f0eee6;
-    --mw-sent: #c0603f;
-    --mw-link: #b4502e;
-    --mw-muted: #8a867c;
-    --mw-bar: rgba(250, 249, 245, 0.82);
-    --mw-line: rgba(31, 30, 29, 0.12);
-    --mw-line-strong: #dad7cb;
-    --mw-dot: #c0603f;
-    --mw-shadow: 0 1px 2px rgba(31, 30, 29, 0.06);
-    --mw-input-shadow: 0 2px 12px rgba(31, 30, 29, 0.06);
-    --mw-font: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --mw-serif: "Noto Serif KR", "Nanum Myeongjo", "Apple SD Gothic Neo", Georgia, "Times New Roman", serif;
+/* 기본 Streamlit 장식 숨기기 */
+#MainMenu, footer {visibility: hidden;}
+header[data-testid="stHeader"] {background: transparent;}
+.block-container {max-width: 780px; padding-top: 1.2rem; padding-bottom: 8rem;}
 
-    /* 말풍선 셀렉터에서 공통으로 쓰는 값 */
-    --mw-radius: 1.2rem;
+/* 헤더 */
+.mw-header {text-align: center; padding: 0.4rem 0 1.1rem;}
+.mw-title {
+    font-size: 1.9rem; font-weight: 800; letter-spacing: -0.5px;
+    background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
-@media (prefers-color-scheme: dark) {
-    :root {
-        --mw-bg: #262624;
-        --mw-text: #f0eee6;
-        --mw-recv: #33322f;
-        --mw-sent: #c4623f;
-        --mw-link: #e8a07f;
-        --mw-muted: #9a968c;
-        --mw-bar: rgba(38, 38, 36, 0.82);
-        --mw-line: rgba(240, 238, 230, 0.14);
-        --mw-line-strong: #4a4945;
-        --mw-dot: #d97757;
-        --mw-shadow: none;
-        --mw-input-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
-    }
+.mw-sub {opacity: 0.6; font-size: 0.88rem; margin-top: 0.15rem;}
+
+/* 환영 화면 */
+.mw-hero {text-align: center; padding: 2.2rem 0 1.2rem;}
+.mw-hero .orb {
+    width: 76px; height: 76px; margin: 0 auto 1rem; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #c4b5fd, #6366f1 55%, #312e81);
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.55);
+    display: flex; align-items: center; justify-content: center; font-size: 2.1rem;
+}
+.mw-hero h3 {margin: 0.2rem 0 0.3rem; font-weight: 700;}
+.mw-hero p {opacity: 0.6; margin: 0;}
+
+/* 채팅 메시지 공통 */
+[data-testid="stChatMessage"] {background: transparent; border: none; padding: 0.35rem 0;}
+[data-testid="stChatMessage"] [data-testid="stChatMessageContent"] {
+    border-radius: 18px; padding: 0.7rem 1rem; width: fit-content; max-width: 86%;
 }
 
-/* ===== 기본 장식 정리 ===== */
-#MainMenu, footer, [data-testid="stDecoration"],
-[data-testid="stToolbar"], [data-testid="stAppDeployButton"], [data-testid="stMainMenu"] {display: none !important;}
-header[data-testid="stHeader"] {background: transparent; height: 0;}
-.stApp, [data-testid="stAppViewContainer"] {background: var(--mw-bg) !important; color: var(--mw-text);}
-.stApp, .stApp button, .stApp textarea {font-family: var(--mw-font) !important;}
-.block-container {max-width: 720px; padding: 6.2rem 1rem 7rem;}
-.block-container [data-testid="stVerticalBlock"] {gap: 0.28rem;}
-* {scrollbar-width: thin; scrollbar-color: rgba(138, 134, 124, 0.4) transparent;}
-
-/* 답변이 오는 동안 이전 말풍선이 흐려졌다 돌아오는 깜빡임 방지 */
-[data-stale="true"] {opacity: 1 !important; transition: none !important;}
-
-/* ===== 애니메이션 ===== */
-@keyframes mw-pop {
-    0%   {opacity: 0; transform: scale(0.6) translateY(6px);}
-    60%  {opacity: 1; transform: scale(1.03);}
-    100% {opacity: 1; transform: scale(1);}
-}
-@keyframes mw-fade {from {opacity: 0;} to {opacity: 1;}}
-@keyframes mw-fade-down {from {opacity: 0; transform: translateY(-10px);} to {opacity: 1; transform: translateY(0);}}
-@keyframes mw-rise {from {opacity: 0; transform: translateY(12px);} to {opacity: 1; transform: translateY(0);}}
-@keyframes mw-dot {
-    0%, 60%, 100% {opacity: 0.35; transform: translateY(0);}
-    30%           {opacity: 1;    transform: translateY(-4px);}
-}
-@keyframes mw-pulse {
-    0%   {box-shadow: 0 0 0 0 rgba(91, 154, 106, 0.5);}
-    70%  {box-shadow: 0 0 0 6px rgba(91, 154, 106, 0);}
-    100% {box-shadow: 0 0 0 0 rgba(91, 154, 106, 0);}
+/* 챗봇(왼쪽) 말풍선 */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"] {
+    background: rgba(128, 128, 128, 0.10);
+    border: 1px solid rgba(128, 128, 128, 0.18);
+    border-top-left-radius: 4px;
 }
 
-/* ===== 상단 연락처 바 (블러) ===== */
-.mw-bar {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-    display: flex; justify-content: center; padding: 0.55rem 0 0.45rem;
-    padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
-    background: var(--mw-bar);
-    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border-bottom: 0.5px solid var(--mw-line);
-    animation: mw-fade-down 0.45s ease-out;
+/* 사용자(오른쪽) 말풍선 */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {flex-direction: row-reverse;}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff; border-top-right-radius: 4px; margin-left: auto; text-align: left;
 }
-.mw-contact {display: flex; flex-direction: column; align-items: center; gap: 0.1rem;}
-.mw-avatar-wrap {position: relative;}
-.mw-avatar {
-    width: 46px; height: 46px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(160deg, #e39574, #c0603f 65%, #a84e30);
-    font-family: var(--mw-serif);
-    color: #fff; font-weight: 700; font-size: 1.15rem;
-    box-shadow: 0 2px 8px rgba(192, 96, 63, 0.32);
-}
-.mw-online {
-    position: absolute; right: 0; bottom: 1px; width: 12px; height: 12px; border-radius: 50%;
-    background: #5b9a6a; border: 2px solid var(--mw-bg); animation: mw-pulse 2.4s infinite;
-}
-.mw-name {font-family: var(--mw-serif); font-size: 0.82rem; font-weight: 700; color: var(--mw-text);}
-.mw-name span {color: var(--mw-muted); margin-left: 2px; font-weight: 400;}
-.mw-sub {font-size: 0.62rem; color: var(--mw-muted); margin-top: -0.1rem;}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] * {color: #fff;}
 
-/* ===== 시간 라벨 / 읽음 표시 ===== */
-.mw-time {text-align: center; font-size: 0.72rem; color: var(--mw-muted); margin: 0.2rem 0 0.6rem; animation: mw-fade 0.5s ease-out;}
-.mw-time b {font-weight: 600;}
-.mw-receipt {text-align: right; font-size: 0.7rem; font-weight: 600; color: var(--mw-muted); padding-right: 0.4rem; animation: mw-fade 0.4s ease-out;}
+/* 입력창 */
+[data-testid="stChatInput"] {
+    border-radius: 26px; border: 1px solid rgba(129, 140, 248, 0.5);
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.12);
+}
+[data-testid="stChatInput"] textarea {font-size: 0.98rem;}
 
-/* =====================================================================
-   말풍선
-   ※ 이모지 아바타(🌌 🙂)를 쓰면 Streamlit이 stChatMessageAvatarUser/Assistant 속성을
-     붙이지 않으므로, 항상 존재하는 aria-label("Chat message from user/assistant")로
-     보낸 사람을 구분합니다.
-   ===================================================================== */
-
-/* 아바타 숨김 (본문을 제외한 나머지 자식) */
-[data-testid="stChatMessage"] > *:not([data-testid="stChatMessageContent"]) {display: none !important;}
-
-/* 한 줄(행) 전체 */
-[data-testid="stChatMessage"] {
-    display: flex !important; width: 100%;
-    background: transparent !important; border: none !important;
-    padding: 0.06rem 0 !important; gap: 0 !important; overflow: visible;
-}
-[data-testid="stChatMessage"]:has(> [aria-label="Chat message from assistant"]) {justify-content: flex-start;}
-[data-testid="stChatMessage"]:has(> [aria-label="Chat message from user"])      {justify-content: flex-end;}
-
-/* 말풍선 공통 */
-[data-testid="stChatMessageContent"] {
-    position: relative; isolation: isolate;
-    flex: 0 1 auto !important; width: fit-content !important; min-width: 0; max-width: 78%;
-    margin: 0 !important; /* Streamlit 기본값 margin:auto 가 말풍선을 가운데로 밀어내므로 제거 */
-    padding: 0.55rem 0.95rem; border-radius: var(--mw-radius);
-    font-size: 1rem; line-height: 1.42; box-shadow: var(--mw-shadow);
-    word-break: keep-all; overflow-wrap: anywhere;
-}
-/* Streamlit 마크다운 컨테이너는 margin-bottom:-1rem 으로 마지막 문단 여백을 상쇄합니다.
-   여백을 직접 관리하므로 상쇄값을 0으로 맞춰야 말풍선 아래가 잘리지 않습니다. */
-[data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"] {margin-bottom: 0 !important;}
-[data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"] > :last-child {margin-bottom: 0 !important;}
-[data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"],
-[data-testid="stChatMessageContent"] p, [data-testid="stChatMessageContent"] li {
-    word-break: keep-all !important; overflow-wrap: anywhere !important; /* 한글은 단어(띄어쓰기) 단위로 줄바꿈 */
-}
-[data-testid="stChatMessageContent"] p {margin: 0 0 0.4rem;}
-[data-testid="stChatMessageContent"] ul, [data-testid="stChatMessageContent"] ol {margin: 0.15rem 0 0.4rem; padding-left: 1.15rem;}
-[data-testid="stChatMessageContent"] li {margin: 0.1rem 0; padding-left: 0.1rem;}
-[data-testid="stChatMessageContent"] li p {margin: 0;}
-[data-testid="stChatMessageContent"] h1, [data-testid="stChatMessageContent"] h2,
-[data-testid="stChatMessageContent"] h3, [data-testid="stChatMessageContent"] h4 {
-    font-size: 1.04rem; font-weight: 700; margin: 0.15rem 0 0.3rem; padding: 0;
-}
-[data-testid="stChatMessageContent"] code {
-    font-size: 0.88em; padding: 0.1em 0.38em; border-radius: 6px; background: rgba(120, 120, 128, 0.18);
-}
-[data-testid="stChatMessageContent"] a {text-decoration: underline; text-underline-offset: 2px;}
-
-/* ----- 받은 메시지 (왼쪽 · 크림) ----- */
-[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] {
-    background: var(--mw-recv); color: var(--mw-text); margin-right: auto !important;
-    border: 1px solid var(--mw-line); border-bottom-left-radius: 0.4rem;
-    animation: mw-rise 0.35s ease-out;
-}
-[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] a {color: var(--mw-link);}
-
-/* ----- 보낸 메시지 (오른쪽 · 테라코타) ----- */
-[data-testid="stChatMessageContent"][aria-label="Chat message from user"] {
-    background: var(--mw-sent); color: #fff; margin-left: auto !important;
-    border: 1px solid transparent; border-bottom-right-radius: 0.4rem;
-    animation: mw-rise 0.35s ease-out;
-}
-[data-testid="stChatMessageContent"][aria-label="Chat message from user"] * {color: #fff !important;}
-[data-testid="stChatMessageContent"][aria-label="Chat message from user"] code {background: rgba(255, 255, 255, 0.22);}
-
-/* ----- 같은 사람이 연속으로 보낸 말풍선: 모서리를 모두 둥글게 ----- */
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {
-    border-bottom-right-radius: var(--mw-radius);
-}
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {
-    border-bottom-left-radius: var(--mw-radius);
-}
-/* 말하는 사람이 바뀌면 간격을 조금 더 벌려 대화 흐름이 보이게 */
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]) + :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]),
-:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) + :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]) {
-    margin-top: 0.4rem;
-}
-
-/* ===== '입력 중...' 점 세 개 ===== */
-.mw-typing {display: inline-flex; align-items: center; gap: 5px; height: 1.4rem; padding: 0 0.2rem;}
-.mw-typing span {
-    width: 8px; height: 8px; border-radius: 50%; background: var(--mw-dot);
-    animation: mw-dot 1.3s infinite ease-in-out;
-}
-.mw-typing span:nth-child(2) {animation-delay: 0.18s;}
-.mw-typing span:nth-child(3) {animation-delay: 0.36s;}
-
-/* ===== 입력창 ===== */
-[data-testid="stBottom"] > div {
-    background: var(--mw-bar) !important;
-    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border-top: 0.5px solid var(--mw-line);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-[data-testid="stChatInput"] {background: transparent !important; border: none !important; box-shadow: none !important;}
-[data-testid="stChatInput"] > div {
-    border-radius: 20px !important; border: 1px solid var(--mw-line-strong) !important;
-    background: var(--mw-bg) !important; box-shadow: var(--mw-input-shadow); overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-[data-testid="stChatInput"] > div:focus-within {
-    border-color: var(--mw-sent) !important; box-shadow: 0 0 0 3px rgba(192, 96, 63, 0.16);
-}
-[data-testid="stChatInput"] > div div, [data-testid="stChatInput"] textarea {
-    background: transparent !important; border-radius: 0 !important; box-shadow: none !important;
-}
-[data-testid="stChatInput"] textarea {font-size: 1rem; padding-left: 1.1rem !important; color: var(--mw-text);}
-[data-testid="stChatInput"] textarea::placeholder {color: var(--mw-muted); opacity: 1;}
-[data-testid="stChatInput"] button {
-    border-radius: 12px !important; background: var(--mw-sent) !important; color: #fff !important;
-    transition: transform 0.15s, opacity 0.2s;
-}
-[data-testid="stChatInput"] button:hover {transform: scale(1.08);}
-[data-testid="stChatInput"] button:active {transform: scale(0.9);}
-[data-testid="stChatInput"] button:disabled {background: var(--mw-muted) !important; opacity: 0.3;}
-[data-testid="stChatInput"] button svg {fill: #fff !important; color: #fff !important;}
-
-/* ===== 답변 아래 평가 아이콘 줄 (좁은 화면에서도 가로로 유지) ===== */
-[data-testid="stHorizontalBlock"]:has([class*="st-key-fb_"]) {
-    flex-wrap: nowrap !important; gap: 0.1rem !important; align-items: center; padding-left: 0.15rem;
-}
-[data-testid="stHorizontalBlock"]:has([class*="st-key-fb_"]) > [data-testid="stColumn"] {
-    flex: 0 0 auto !important; width: auto !important; min-width: 0 !important;
-}
-[class*="st-key-fb_"] {animation: mw-rise 0.3s ease-out;}
+/* 답변 아래 작은 평가 아이콘 줄 (좋아요/싫어요/자세한 대답) */
 [class*="st-key-fb_"] button {
     background: transparent !important; border: none !important; box-shadow: none !important;
     padding: 0.05rem 0.4rem !important; min-height: 0 !important;
-    font-size: 0.95rem; opacity: 0.55; transition: opacity 0.15s, transform 0.15s, background 0.15s;
+    font-size: 1rem; opacity: 0.5; transition: opacity .15s, background .15s;
 }
-[class*="st-key-fb_"] button:hover {opacity: 1; transform: scale(1.15); background: rgba(142, 142, 147, 0.16) !important; border-radius: 10px;}
-[class*="st-key-fb_"] button:active {transform: scale(0.9);}
-.mw-fb-note {font-size: 0.72rem; font-weight: 600; color: var(--mw-muted); white-space: nowrap; padding-left: 0.2rem; animation: mw-fade 0.4s ease-out;}
+[class*="st-key-fb_"] button:hover {opacity: 1; background: rgba(128, 128, 128, 0.16) !important; border-radius: 8px;}
+.mw-fb-note {font-size: 0.78rem; opacity: 0.55; padding-top: 0.3rem;}
 
-/* ===== 추천 질문 (iOS 스마트 답장 느낌 · 모바일에서도 2열) ===== */
-[data-testid="stHorizontalBlock"]:has([class*="st-key-chip_"]) {
-    flex-wrap: wrap !important; gap: 0.5rem !important; margin-top: 0.5rem;
-}
-[data-testid="stHorizontalBlock"]:has([class*="st-key-chip_"]) > [data-testid="stColumn"] {
-    flex: 1 1 calc(50% - 0.5rem) !important; width: auto !important; min-width: 0 !important;
-}
-[class*="st-key-chip_"] {animation: mw-rise 0.5s ease-out both;}
-.st-key-chip_1 {animation-delay: 0.08s;}
-.st-key-chip_2 {animation-delay: 0.16s;}
-.st-key-chip_3 {animation-delay: 0.24s;}
+/* 추천 질문 칩 */
 [class*="st-key-chip_"] button {
-    border-radius: 14px; border: 1px solid var(--mw-line-strong); background: var(--mw-bg);
-    padding: 0.5rem 0.8rem; transition: transform 0.15s, background 0.15s, border-color 0.15s;
+    border-radius: 999px; border: 1px solid rgba(129, 140, 248, 0.45);
+    background: rgba(99, 102, 241, 0.07); font-size: 0.9rem; padding: 0.45rem 0.9rem;
 }
-[class*="st-key-chip_"] button p {
-    color: var(--mw-sent) !important; font-size: 0.9rem; font-weight: 500; line-height: 1.25;
-    white-space: normal; word-break: keep-all; overflow: visible; text-overflow: clip;
-}
-[class*="st-key-chip_"] button:hover {background: rgba(192, 96, 63, 0.09); border-color: var(--mw-sent); transform: translateY(-1px);}
-[class*="st-key-chip_"] button:active {transform: scale(0.96);}
-
-/* ===== 작은 화면 ===== */
-@media (max-width: 480px) {
-    .block-container {padding-left: 0.7rem; padding-right: 0.7rem;}
-    [data-testid="stChatMessageContent"] {max-width: 85%; font-size: 0.98rem;}
-}
-
-/* ===== 모션 줄이기 설정 존중 ===== */
-@media (prefers-reduced-motion: reduce) {
-    * {animation: none !important; transition: none !important;}
-}
+[class*="st-key-chip_"] button:hover {background: rgba(99, 102, 241, 0.18); border-color: #818cf8;}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-TYPING_HTML = '<div class="mw-typing"><span></span><span></span><span></span></div>'
-
-
-def time_label():
-    n = datetime.now(KST)
-    ampm = "오전" if n.hour < 12 else "오후"
-    return f"<b>오늘</b> {ampm} {n.hour % 12 or 12}:{n.minute:02d}"
-
 
 # ==========================================
 # 세션 상태
@@ -332,8 +119,6 @@ if "queued_prompt" not in st.session_state:
     st.session_state.queued_prompt = None
 if "pending_detail" not in st.session_state:
     st.session_state.pending_detail = None
-if "started_label" not in st.session_state:
-    st.session_state.started_label = time_label()
 
 
 # ==========================================
@@ -347,7 +132,6 @@ def scroll_to_bottom():
             function getMainContainer() {
                 const doc = window.parent.document;
                 return (
-                    doc.querySelector('[data-testid="stMain"]') ||
                     doc.querySelector('section[data-testid="stMain"]') ||
                     doc.querySelector('[data-testid="stAppViewContainer"] section.main') ||
                     doc.querySelector('section.main') ||
@@ -621,62 +405,13 @@ def send_feedback(fb: dict, vote: str):
 
 
 # ==========================================
-# 💬 '입력 중...' 말풍선 + 답변 스트리밍
-# ==========================================
-def show_typing():
-    """회색 말풍선 안에서 점 세 개가 통통 튀는 '입력 중' 표시를 띄웁니다."""
-    ph = st.empty()
-    with ph.container():
-        with st.chat_message("assistant", avatar=BOT_AVATAR):
-            st.markdown(TYPING_HTML, unsafe_allow_html=True)
-    return ph
-
-
-def stream_reply(ph, gen, started_at, min_delay=0.0):
-    """첫 글자가 올 때까지 '입력 중' 말풍선을 보여주고, 도착하면 실제 답변 말풍선으로 바꿔 스트리밍합니다."""
-    gen = iter(gen)
-    try:
-        first = next(gen)
-        chunks = chain([first], gen)
-    except StopIteration:
-        chunks = iter(())
-
-    wait = min_delay - (time.time() - started_at)
-    if wait > 0:
-        time.sleep(wait)
-
-    ph.empty()
-    with st.chat_message("assistant", avatar=BOT_AVATAR):
-        return st.write_stream(chunks)
-
-
-def add_assistant_message(text):
-    """답변을 대화 기록에 저장하고, 평가 아이콘 줄이 필요하면 바로 아래에 붙입니다."""
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": text,
-        "feedback": st.session_state.latest_feedback,
-        "voted": None,
-        "detail_done": False,
-    })
-    st.session_state.latest_feedback = None
-    idx = len(st.session_state.messages) - 1
-    msg = st.session_state.messages[idx]
-    if msg["feedback"]:
-        render_feedback_row(idx, msg)
-
-
-# ==========================================
 # 4. UI 구성
 # ==========================================
 st.markdown(
     """
-    <div class="mw-bar">
-        <div class="mw-contact">
-            <div class="mw-avatar-wrap"><div class="mw-avatar">밀</div><span class="mw-online"></span></div>
-            <div class="mw-name">밀키웨이<span>›</span></div>
-            <div class="mw-sub">산청고등학교 AI 챗봇 · 인터스텔라</div>
-        </div>
+    <div class="mw-header">
+        <div class="mw-title">🌌 밀키웨이</div>
+        <div class="mw-sub">산청고등학교 AI 챗봇 · 인터스텔라</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -684,7 +419,7 @@ st.markdown(
 
 
 def render_feedback_row(i: int, msg: dict):
-    """받은 메시지 바로 아래에 붙는 작은 아이콘 줄. 입력창은 가리지 않습니다."""
+    """답변 말풍선 바로 아래에 붙는 작은 아이콘 줄. 입력창은 가리지 않습니다."""
     voted = msg.get("voted")
     detail_done = msg.get("detail_done", False)
 
@@ -705,7 +440,6 @@ def render_feedback_row(i: int, msg: dict):
     if not detail_done:
         with c_detail:
             if st.button("🔍", key=f"fb_detail_{i}", help="자세한 대답 보기"):
-                st.session_state.messages[i]["detail_done"] = True
                 st.session_state.pending_detail = i
                 st.rerun()
 
@@ -716,47 +450,36 @@ def render_feedback_row(i: int, msg: dict):
 
 
 def render_messages():
-    msgs = st.session_state.messages
-    last_user = max((i for i, m in enumerate(msgs) if m["role"] == "user"), default=None)
-
-    for i, msg in enumerate(msgs):
+    for i, msg in enumerate(st.session_state.messages):
         avatar = BOT_AVATAR if msg["role"] == "assistant" else USER_AVATAR
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
-
-        # 마지막으로 보낸 메시지 아래에 아이폰처럼 '전송됨/읽음' 표시
-        if msg["role"] == "user" and i == last_user:
-            status = "읽음" if i < len(msgs) - 1 else "전송됨"
-            st.markdown(f'<div class="mw-receipt">{status}</div>', unsafe_allow_html=True)
-
-        if msg["role"] == "assistant" and msg.get("feedback"):
-            render_feedback_row(i, msg)
+            if msg["role"] == "assistant" and msg.get("feedback"):
+                render_feedback_row(i, msg)
 
 
 def render_welcome():
-    with st.chat_message("assistant", avatar=BOT_AVATAR):
-        st.markdown("안녕하세요, 밀키웨이예요! 👋\n\n급식, 날씨, 시간표, 학사일정부터 과학 질문까지 편하게 물어보세요.")
-
-    examples = [
-        ("🍚", "오늘 급식 뭐야?"),
-        ("🌤️", "내일 날씨 알려줘"),
-        ("📚", "3학년 2반 시간표 알려줘"),
-        ("🚌", "수학여행 언제야?"),
-    ]
+    st.markdown(
+        """
+        <div class="mw-hero">
+            <div class="orb">🌌</div>
+            <h3>안녕하세요, 밀키웨이예요!</h3>
+            <p>급식, 날씨, 시간표, 학사일정부터 과학 질문까지 물어보세요.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    examples = ["오늘 급식 뭐야?", "내일 날씨 알려줘", "3학년 2반 시간표 알려줘", "수학여행 언제야?"]
     cols = st.columns(2)
-    for n, (icon, text) in enumerate(examples):
+    for n, text in enumerate(examples):
         with cols[n % 2]:
-            if st.button(f"{icon}  {text}", key=f"chip_{n}", use_container_width=True):
+            if st.button(text, key=f"chip_{n}", use_container_width=True):
                 st.session_state.queued_prompt = text
                 st.rerun()
 
 
-st.markdown(f'<div class="mw-time">{st.session_state.started_label}</div>', unsafe_allow_html=True)
-
-welcome_ph = st.empty()  # 첫 메시지를 보내면 비웁니다
 if not st.session_state.messages:
-    with welcome_ph.container():
-        render_welcome()
+    render_welcome()
 else:
     render_messages()
 
@@ -764,69 +487,84 @@ else:
 if st.session_state.pending_detail is not None:
     idx = st.session_state.pending_detail
     st.session_state.pending_detail = None
-    fb = st.session_state.messages[idx].get("feedback")
+    target = st.session_state.messages[idx]
+    fb = target.get("feedback")
     if fb:
+        target["detail_done"] = True
         st.session_state.latest_feedback = None
-        typing_ph = show_typing()
-        detail_text = stream_reply(typing_ph, stream_detail_answer(fb), time.time(), 0.4)
-        add_assistant_message(detail_text)
+        with st.chat_message("assistant", avatar=BOT_AVATAR):
+            detail_text = st.write_stream(stream_detail_answer(fb))
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": detail_text,
+            "feedback": st.session_state.latest_feedback,
+            "voted": None,
+            "detail_done": False,
+        })
+        st.session_state.latest_feedback = None
+        st.rerun()
 
 # 💡 입력창은 항상 열려 있습니다. (평가는 선택 사항)
-user_input = st.chat_input("메시지 입력")
+user_input = st.chat_input("무엇이든 물어보세요...")
 if st.session_state.queued_prompt:
     user_input = st.session_state.queued_prompt
     st.session_state.queued_prompt = None
 
 if user_input:
-    welcome_ph.empty()  # 환영 말풍선 + 추천 질문 제거
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user", avatar=USER_AVATAR):
         st.markdown(user_input)
-    st.markdown('<div class="mw-receipt">읽음</div>', unsafe_allow_html=True)
 
     st.session_state.latest_feedback = None
 
-    if user_input == "종료":
-        with st.chat_message("assistant", avatar=BOT_AVATAR):
+    with st.chat_message("assistant", avatar=BOT_AVATAR):
+        if user_input == "종료":
             st.markdown("챗봇이 종료되었습니다.")
-        st.stop()
+            st.stop()
 
-    typing_ph = show_typing()
-    t0 = time.time()
+        processed_input = rewrite_question(user_input)
+        update_topic(processed_input)
 
-    processed_input = rewrite_question(user_input)
-    update_topic(processed_input)
-
-    if len(knowledge_base) == 0:
-        full_response = stream_reply(typing_ph, stream_text("지식 베이스가 비어있습니다. DB를 확인해주세요."), t0, 0.6)
-    else:
-        # [1차: 키워드 AND 매칭]
-        matched_idx = keyword_match(processed_input)
-
-        if matched_idx is not None:
-            matched_answer = knowledge_base[matched_idx]["answer"]
+        if len(knowledge_base) == 0:
+            full_response = st.write_stream(stream_text("지식 베이스가 비어있습니다. DB를 확인해주세요."))
         else:
-            # [2차: 임베딩 유사도 폴백] 1·2등 점수 차이가 작으면 애매한 매칭으로 보고 AI 폴백으로 넘깁니다.
-            matches = semantic_search_db(processed_input, top_k=2, threshold=0.65)
+            # [1차: 키워드 AND 매칭]
+            matched_idx = keyword_match(processed_input)
 
-            if matches:
-                best = matches[0]
-                best_score = best.get("similarity", 0.0)
-                second_score = matches[1].get("similarity", 0.0) if len(matches) > 1 else 0.0
-                margin = best_score - second_score
+            if matched_idx is not None:
+                matched_answer = knowledge_base[matched_idx]["answer"]
+            else:
+                # [2차: 임베딩 유사도 폴백] 1·2등 점수 차이가 작으면 애매한 매칭으로 보고 AI 폴백으로 넘깁니다.
+                matches = semantic_search_db(processed_input, top_k=2, threshold=0.65)
 
-                if best_score >= 0.65 and margin >= 0.05:
-                    matched_answer = best.get("answer")
+                if matches:
+                    best = matches[0]
+                    best_score = best.get("similarity", 0.0)
+                    second_score = matches[1].get("similarity", 0.0) if len(matches) > 1 else 0.0
+                    margin = best_score - second_score
+
+                    if best_score >= 0.65 and margin >= 0.05:
+                        matched_answer = best.get("answer")
+                    else:
+                        matched_answer = None
                 else:
                     matched_answer = None
+
+            if matched_answer is not None and "!edgefunction@" not in matched_answer:
+                full_response = st.write_stream(stream_text(matched_answer))
             else:
-                matched_answer = None
+                full_response = st.write_stream(stream_edge_function(processed_input, current_lat, current_lon))
 
-        if matched_answer is not None and "!edgefunction@" not in matched_answer:
-            full_response = stream_reply(typing_ph, stream_text(matched_answer), t0, 0.7)
-        else:
-            full_response = stream_reply(typing_ph, stream_edge_function(processed_input, current_lat, current_lon), t0)
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": full_response,
+        "feedback": st.session_state.latest_feedback,
+        "voted": None,
+        "detail_done": False,
+    })
+    st.session_state.latest_feedback = None
 
-    add_assistant_message(full_response)
+    # 💡 다시 그려서 방금 답변 밑에 평가 아이콘 줄이 붙게 합니다.
+    st.rerun()
 
 scroll_to_bottom()
