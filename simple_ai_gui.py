@@ -41,13 +41,7 @@ header[data-testid="stHeader"] {background: transparent;}
 .mw-sub {opacity: 0.6; font-size: 0.88rem; margin-top: 0.15rem;}
 
 /* 환영 화면 */
-.mw-hero {text-align: center; padding: 2.2rem 0 1.2rem;}
-.mw-hero .orb {
-    width: 76px; height: 76px; margin: 0 auto 1rem; border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #c4b5fd, #6366f1 55%, #312e81);
-    box-shadow: 0 0 40px rgba(139, 92, 246, 0.55);
-    display: flex; align-items: center; justify-content: center; font-size: 2.1rem;
-}
+.mw-hero {text-align: center; padding: 3rem 0 1.4rem;}
 .mw-hero h3 {margin: 0.2rem 0 0.3rem; font-weight: 700;}
 .mw-hero p {opacity: 0.6; margin: 0;}
 
@@ -72,12 +66,26 @@ header[data-testid="stHeader"] {background: transparent;}
 }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] * {color: #fff;}
 
-/* 입력창 */
+/* 입력창: 바깥 테두리와 안쪽 필드의 모양을 하나로 통일 */
 [data-testid="stChatInput"] {
-    border-radius: 26px; border: 1px solid rgba(129, 140, 248, 0.5);
-    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.12);
+    background: transparent !important; border: none !important; box-shadow: none !important;
 }
-[data-testid="stChatInput"] textarea {font-size: 0.98rem;}
+[data-testid="stChatInput"] > div {
+    border-radius: 28px !important;
+    border: 1px solid rgba(129, 140, 248, 0.55) !important;
+    background: rgba(128, 128, 128, 0.07) !important;
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.12);
+    overflow: hidden;
+}
+[data-testid="stChatInput"] > div:focus-within {
+    border-color: #818cf8 !important;
+    box-shadow: 0 4px 28px rgba(99, 102, 241, 0.25);
+}
+[data-testid="stChatInput"] div, [data-testid="stChatInput"] textarea {
+    background: transparent !important; border-radius: 0 !important; box-shadow: none !important;
+}
+[data-testid="stChatInput"] textarea {font-size: 0.98rem; padding-left: 1.1rem !important;}
+[data-testid="stChatInput"] button {border-radius: 50% !important;}
 
 /* 답변 아래 작은 평가 아이콘 줄 (좋아요/싫어요/자세한 대답) */
 [class*="st-key-fb_"] button {
@@ -410,7 +418,7 @@ def send_feedback(fb: dict, vote: str):
 st.markdown(
     """
     <div class="mw-header">
-        <div class="mw-title">🌌 밀키웨이</div>
+        <div class="mw-title">밀키웨이</div>
         <div class="mw-sub">산청고등학교 AI 챗봇 · 인터스텔라</div>
     </div>
     """,
@@ -462,7 +470,6 @@ def render_welcome():
     st.markdown(
         """
         <div class="mw-hero">
-            <div class="orb">🌌</div>
             <h3>안녕하세요, 밀키웨이예요!</h3>
             <p>급식, 날씨, 시간표, 학사일정부터 과학 질문까지 물어보세요.</p>
         </div>
