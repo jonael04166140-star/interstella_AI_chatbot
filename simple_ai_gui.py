@@ -32,41 +32,53 @@ CUSTOM_CSS = """
 /* ===== 색상 · 폰트 변수 (라이트/다크 자동) ===== */
 :root {
     --mw-bg: #ffffff;
-    --mw-text: #000000;
+    --mw-text: #111111;
     --mw-recv: #e9e9eb;
     --mw-sent: #0b84fe;
+    --mw-link: #0a66d6;
     --mw-muted: #8e8e93;
-    --mw-bar: rgba(249, 249, 249, 0.82);
-    --mw-line: rgba(60, 60, 67, 0.2);
+    --mw-bar: rgba(250, 250, 250, 0.78);
+    --mw-line: rgba(60, 60, 67, 0.18);
     --mw-line-strong: #c7c7cc;
     --mw-dot: #9a9aa0;
+    --mw-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
     --mw-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+
+    /* 말풍선 셀렉터에서 공통으로 쓰는 값 */
+    --mw-radius: 1.2rem;
 }
 @media (prefers-color-scheme: dark) {
     :root {
         --mw-bg: #000000;
-        --mw-text: #ffffff;
-        --mw-recv: #26252a;
-        --mw-bar: rgba(22, 22, 24, 0.82);
+        --mw-text: #f5f5f7;
+        --mw-recv: #262629;
+        --mw-sent: #0a84ff;
+        --mw-link: #64a8ff;
+        --mw-bar: rgba(22, 22, 24, 0.78);
         --mw-line: rgba(84, 84, 88, 0.55);
         --mw-line-strong: #3a3a3c;
         --mw-dot: #7c7c82;
+        --mw-shadow: none;
     }
 }
 
 /* ===== 기본 장식 정리 ===== */
-#MainMenu, footer, [data-testid="stDecoration"] {display: none;}
-header[data-testid="stHeader"] {background: transparent;}
+#MainMenu, footer, [data-testid="stDecoration"],
+[data-testid="stToolbar"], [data-testid="stAppDeployButton"], [data-testid="stMainMenu"] {display: none !important;}
+header[data-testid="stHeader"] {background: transparent; height: 0;}
 .stApp, [data-testid="stAppViewContainer"] {background: var(--mw-bg) !important; color: var(--mw-text);}
 .stApp, .stApp button, .stApp textarea {font-family: var(--mw-font) !important;}
-.block-container {max-width: 720px; padding: 6.4rem 1rem 7rem;}
-.block-container [data-testid="stVerticalBlock"] {gap: 0.45rem;}
+.block-container {max-width: 720px; padding: 6.2rem 1rem 7rem;}
+.block-container [data-testid="stVerticalBlock"] {gap: 0.28rem;}
 * {scrollbar-width: thin; scrollbar-color: rgba(142, 142, 147, 0.4) transparent;}
+
+/* 답변이 오는 동안 이전 말풍선이 흐려졌다 돌아오는 깜빡임 방지 */
+[data-stale="true"] {opacity: 1 !important; transition: none !important;}
 
 /* ===== 애니메이션 ===== */
 @keyframes mw-pop {
-    0%   {opacity: 0; transform: scale(0.4);}
-    55%  {opacity: 1; transform: scale(1.05);}
+    0%   {opacity: 0; transform: scale(0.6) translateY(6px);}
+    60%  {opacity: 1; transform: scale(1.03);}
     100% {opacity: 1; transform: scale(1);}
 }
 @keyframes mw-fade {from {opacity: 0;} to {opacity: 1;}}
@@ -76,17 +88,24 @@ header[data-testid="stHeader"] {background: transparent;}
     0%, 60%, 100% {opacity: 0.35; transform: translateY(0);}
     30%           {opacity: 1;    transform: translateY(-4px);}
 }
+@keyframes mw-pulse {
+    0%   {box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.55);}
+    70%  {box-shadow: 0 0 0 6px rgba(52, 199, 89, 0);}
+    100% {box-shadow: 0 0 0 0 rgba(52, 199, 89, 0);}
+}
 
 /* ===== 상단 연락처 바 (블러) ===== */
 .mw-bar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
     display: flex; justify-content: center; padding: 0.55rem 0 0.45rem;
+    padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
     background: var(--mw-bar);
-    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border-bottom: 0.5px solid var(--mw-line);
     animation: mw-fade-down 0.45s ease-out;
 }
 .mw-contact {display: flex; flex-direction: column; align-items: center; gap: 0.1rem;}
+.mw-avatar-wrap {position: relative;}
 .mw-avatar {
     width: 46px; height: 46px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
@@ -94,65 +113,120 @@ header[data-testid="stHeader"] {background: transparent;}
     color: #fff; font-weight: 700; font-size: 1.15rem;
     box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
 }
-.mw-name {font-size: 0.72rem; font-weight: 500; color: var(--mw-text);}
-.mw-name span {color: var(--mw-muted); margin-left: 2px;}
+.mw-online {
+    position: absolute; right: 0; bottom: 1px; width: 12px; height: 12px; border-radius: 50%;
+    background: #34c759; border: 2px solid var(--mw-bg); animation: mw-pulse 2.4s infinite;
+}
+.mw-name {font-size: 0.74rem; font-weight: 600; color: var(--mw-text);}
+.mw-name span {color: var(--mw-muted); margin-left: 2px; font-weight: 400;}
 .mw-sub {font-size: 0.62rem; color: var(--mw-muted); margin-top: -0.1rem;}
 
 /* ===== 시간 라벨 / 읽음 표시 ===== */
-.mw-time {text-align: center; font-size: 0.72rem; color: var(--mw-muted); margin: 0.2rem 0 0.5rem; animation: mw-fade 0.5s ease-out;}
+.mw-time {text-align: center; font-size: 0.72rem; color: var(--mw-muted); margin: 0.2rem 0 0.6rem; animation: mw-fade 0.5s ease-out;}
 .mw-time b {font-weight: 600;}
-.mw-receipt {text-align: right; font-size: 0.7rem; font-weight: 600; color: var(--mw-muted); padding-right: 0.35rem; animation: mw-fade 0.4s ease-out;}
+.mw-receipt {text-align: right; font-size: 0.7rem; font-weight: 600; color: var(--mw-muted); padding-right: 0.4rem; animation: mw-fade 0.4s ease-out;}
 
-/* ===== 말풍선 공통 ===== */
-[data-testid="stChatMessageAvatarAssistant"],
-[data-testid="stChatMessageAvatarUser"] {display: none !important;}
+/* =====================================================================
+   말풍선
+   ※ 이모지 아바타(🌌 🙂)를 쓰면 Streamlit이 stChatMessageAvatarUser/Assistant 속성을
+     붙이지 않으므로, 항상 존재하는 aria-label("Chat message from user/assistant")로
+     보낸 사람을 구분합니다.
+   ===================================================================== */
 
+/* 아바타 숨김 (본문을 제외한 나머지 자식) */
+[data-testid="stChatMessage"] > *:not([data-testid="stChatMessageContent"]) {display: none !important;}
+
+/* 한 줄(행) 전체 */
 [data-testid="stChatMessage"] {
-    background: transparent !important; border: none; padding: 0.08rem 0 !important; gap: 0; overflow: visible;
+    display: flex !important; width: 100%;
+    background: transparent !important; border: none !important;
+    padding: 0.06rem 0 !important; gap: 0 !important; overflow: visible;
 }
-[data-testid="stChatMessage"] [data-testid="stChatMessageContent"] {
-    position: relative; isolation: isolate;
-    flex: 0 1 auto !important; width: fit-content; max-width: 76%;
-    padding: 0.5rem 0.9rem; border-radius: 1.15rem;
-    font-size: 1rem; line-height: 1.4;
-}
-[data-testid="stChatMessage"] [data-testid="stChatMessageContent"] p {margin: 0 0 0.35rem;}
-[data-testid="stChatMessage"] [data-testid="stChatMessageContent"] p:last-child {margin-bottom: 0;}
-[data-testid="stChatMessage"] [data-testid="stChatMessageContent"]::before,
-[data-testid="stChatMessage"] [data-testid="stChatMessageContent"]::after {
-    content: ""; position: absolute; bottom: 0; height: 20px;
-}
+[data-testid="stChatMessage"]:has(> [aria-label="Chat message from assistant"]) {justify-content: flex-start;}
+[data-testid="stChatMessage"]:has(> [aria-label="Chat message from user"])      {justify-content: flex-end;}
 
-/* ===== 받은 메시지 (왼쪽, 회색) ===== */
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"] {
-    background: var(--mw-recv); color: var(--mw-text);
-    margin-right: auto; border-bottom-left-radius: 0.8rem 0.7rem;
-    transform-origin: bottom left; animation: mw-pop 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+/* 말풍선 공통 */
+[data-testid="stChatMessageContent"] {
+    position: relative; isolation: isolate;
+    flex: 0 1 auto !important; width: fit-content !important; min-width: 0; max-width: 78%;
+    margin: 0 !important; /* Streamlit 기본값 margin:auto 가 말풍선을 가운데로 밀어내므로 제거 */
+    padding: 0.55rem 0.95rem; border-radius: var(--mw-radius);
+    font-size: 1rem; line-height: 1.42; box-shadow: var(--mw-shadow);
+    word-break: keep-all; overflow-wrap: anywhere;
 }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"]::before {
-    z-index: -1; left: -8px; width: 20px; background: var(--mw-recv); border-bottom-right-radius: 15px;
+/* Streamlit 마크다운 컨테이너는 margin-bottom:-1rem 으로 마지막 문단 여백을 상쇄합니다.
+   여백을 직접 관리하므로 상쇄값을 0으로 맞춰야 말풍선 아래가 잘리지 않습니다. */
+[data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"] {margin-bottom: 0 !important;}
+[data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"] > :last-child {margin-bottom: 0 !important;}
+[data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"],
+[data-testid="stChatMessageContent"] p, [data-testid="stChatMessageContent"] li {
+    word-break: keep-all !important; overflow-wrap: anywhere !important; /* 한글은 단어(띄어쓰기) 단위로 줄바꿈 */
 }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) [data-testid="stChatMessageContent"]::after {
+[data-testid="stChatMessageContent"] p {margin: 0 0 0.4rem;}
+[data-testid="stChatMessageContent"] ul, [data-testid="stChatMessageContent"] ol {margin: 0.15rem 0 0.4rem; padding-left: 1.15rem;}
+[data-testid="stChatMessageContent"] li {margin: 0.1rem 0; padding-left: 0.1rem;}
+[data-testid="stChatMessageContent"] li p {margin: 0;}
+[data-testid="stChatMessageContent"] h1, [data-testid="stChatMessageContent"] h2,
+[data-testid="stChatMessageContent"] h3, [data-testid="stChatMessageContent"] h4 {
+    font-size: 1.04rem; font-weight: 700; margin: 0.15rem 0 0.3rem; padding: 0;
+}
+[data-testid="stChatMessageContent"] code {
+    font-size: 0.88em; padding: 0.1em 0.38em; border-radius: 6px; background: rgba(120, 120, 128, 0.18);
+}
+[data-testid="stChatMessageContent"] a {text-decoration: underline; text-underline-offset: 2px;}
+[data-testid="stChatMessageContent"]::before,
+[data-testid="stChatMessageContent"]::after {content: ""; position: absolute; bottom: 0; height: 20px;}
+
+/* ----- 받은 메시지 (왼쪽 · 회색) ----- */
+[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] {
+    background: var(--mw-recv); color: var(--mw-text); margin-right: auto !important;
+    border-bottom-left-radius: 0.3rem 0.2rem;
+    transform-origin: bottom left; animation: mw-pop 0.36s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] a {color: var(--mw-link);}
+[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"]::before {
+    z-index: -1; left: -7px; width: 20px; background: var(--mw-recv); border-bottom-right-radius: 15px;
+}
+[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"]::after {
     z-index: 1; left: -10px; width: 10px; background: var(--mw-bg); border-bottom-right-radius: 10px;
 }
 
-/* ===== 보낸 메시지 (오른쪽, 파랑) ===== */
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {flex-direction: row-reverse;}
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
-    background: var(--mw-sent); color: #fff;
-    margin-left: auto; text-align: left; border-bottom-right-radius: 0.8rem 0.7rem;
-    transform-origin: bottom right; animation: mw-pop 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+/* ----- 보낸 메시지 (오른쪽 · 파랑) ----- */
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] {
+    background: var(--mw-sent); color: #fff; margin-left: auto !important;
+    border-bottom-right-radius: 0.3rem 0.2rem;
+    transform-origin: bottom right; animation: mw-pop 0.36s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] * {color: #fff;}
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"]::before {
-    z-index: -1; right: -8px; width: 20px; background: var(--mw-sent); border-bottom-left-radius: 15px;
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] * {color: #fff !important;}
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] code {background: rgba(255, 255, 255, 0.22);}
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"]::before {
+    z-index: -1; right: -7px; width: 20px; background: var(--mw-sent); border-bottom-left-radius: 15px;
 }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"]::after {
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"]::after {
     z-index: 1; right: -10px; width: 10px; background: var(--mw-bg); border-bottom-left-radius: 10px;
 }
 
+/* ----- 같은 사람이 연속으로 보낸 말풍선: 꼬리는 마지막에만, 간격은 촘촘하게 ----- */
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"] {
+    border-bottom-right-radius: var(--mw-radius);
+}
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"] {
+    border-bottom-left-radius: var(--mw-radius);
+}
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"]::before,
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from user"]) [data-testid="stChatMessageContent"]::after,
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"]::before,
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]):has(+ :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]) > [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) [data-testid="stChatMessageContent"]::after {
+    display: none;
+}
+/* 말하는 사람이 바뀌면 간격을 조금 더 벌려 대화 흐름이 보이게 */
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]) + :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]),
+:is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from assistant"]) + :is([data-testid="stLayoutWrapper"], [data-testid="stElementContainer"]):has(> [data-testid="stChatMessage"] [aria-label="Chat message from user"]) {
+    margin-top: 0.4rem;
+}
+
 /* ===== '입력 중...' 점 세 개 ===== */
-.mw-typing {display: inline-flex; align-items: center; gap: 5px; height: 1.35rem; padding: 0 0.15rem;}
+.mw-typing {display: inline-flex; align-items: center; gap: 5px; height: 1.4rem; padding: 0 0.2rem;}
 .mw-typing span {
     width: 8px; height: 8px; border-radius: 50%; background: var(--mw-dot);
     animation: mw-dot 1.3s infinite ease-in-out;
@@ -163,8 +237,9 @@ header[data-testid="stHeader"] {background: transparent;}
 /* ===== 입력창 ===== */
 [data-testid="stBottom"] > div {
     background: var(--mw-bar) !important;
-    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border-top: 0.5px solid var(--mw-line);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 [data-testid="stChatInput"] {background: transparent !important; border: none !important; box-shadow: none !important;}
 [data-testid="stChatInput"] > div {
@@ -189,29 +264,50 @@ header[data-testid="stHeader"] {background: transparent;}
 [data-testid="stChatInput"] button:disabled {background: var(--mw-muted) !important; opacity: 0.3;}
 [data-testid="stChatInput"] button svg {fill: #fff !important; color: #fff !important;}
 
-/* ===== 답변 아래 평가 아이콘 줄 ===== */
+/* ===== 답변 아래 평가 아이콘 줄 (좁은 화면에서도 가로로 유지) ===== */
+[data-testid="stHorizontalBlock"]:has([class*="st-key-fb_"]) {
+    flex-wrap: nowrap !important; gap: 0.1rem !important; align-items: center; padding-left: 0.15rem;
+}
+[data-testid="stHorizontalBlock"]:has([class*="st-key-fb_"]) > [data-testid="stColumn"] {
+    flex: 0 0 auto !important; width: auto !important; min-width: 0 !important;
+}
 [class*="st-key-fb_"] {animation: mw-rise 0.3s ease-out;}
 [class*="st-key-fb_"] button {
     background: transparent !important; border: none !important; box-shadow: none !important;
     padding: 0.05rem 0.4rem !important; min-height: 0 !important;
-    font-size: 0.95rem; opacity: 0.5; transition: opacity 0.15s, transform 0.15s, background 0.15s;
+    font-size: 0.95rem; opacity: 0.55; transition: opacity 0.15s, transform 0.15s, background 0.15s;
 }
-[class*="st-key-fb_"] button:hover {opacity: 1; transform: scale(1.18); background: rgba(142, 142, 147, 0.16) !important; border-radius: 10px;}
+[class*="st-key-fb_"] button:hover {opacity: 1; transform: scale(1.15); background: rgba(142, 142, 147, 0.16) !important; border-radius: 10px;}
 [class*="st-key-fb_"] button:active {transform: scale(0.9);}
-.mw-fb-note {font-size: 0.72rem; font-weight: 600; color: var(--mw-muted); animation: mw-fade 0.4s ease-out;}
+.mw-fb-note {font-size: 0.72rem; font-weight: 600; color: var(--mw-muted); white-space: nowrap; padding-left: 0.2rem; animation: mw-fade 0.4s ease-out;}
 
-/* ===== 추천 질문 (iOS 스마트 답장 느낌) ===== */
+/* ===== 추천 질문 (iOS 스마트 답장 느낌 · 모바일에서도 2열) ===== */
+[data-testid="stHorizontalBlock"]:has([class*="st-key-chip_"]) {
+    flex-wrap: wrap !important; gap: 0.5rem !important; margin-top: 0.5rem;
+}
+[data-testid="stHorizontalBlock"]:has([class*="st-key-chip_"]) > [data-testid="stColumn"] {
+    flex: 1 1 calc(50% - 0.5rem) !important; width: auto !important; min-width: 0 !important;
+}
 [class*="st-key-chip_"] {animation: mw-rise 0.5s ease-out both;}
 .st-key-chip_1 {animation-delay: 0.08s;}
 .st-key-chip_2 {animation-delay: 0.16s;}
 .st-key-chip_3 {animation-delay: 0.24s;}
 [class*="st-key-chip_"] button {
     border-radius: 999px; border: 1px solid var(--mw-line-strong); background: var(--mw-bg);
-    padding: 0.5rem 1rem; transition: transform 0.15s, background 0.15s, border-color 0.15s;
+    padding: 0.5rem 0.8rem; transition: transform 0.15s, background 0.15s, border-color 0.15s;
 }
-[class*="st-key-chip_"] button p {color: var(--mw-sent) !important; font-size: 0.92rem; font-weight: 500;}
+[class*="st-key-chip_"] button p {
+    color: var(--mw-sent) !important; font-size: 0.9rem; font-weight: 500; line-height: 1.25;
+    white-space: normal; word-break: keep-all; overflow: visible; text-overflow: clip;
+}
 [class*="st-key-chip_"] button:hover {background: rgba(11, 132, 254, 0.08); border-color: var(--mw-sent); transform: translateY(-1px);}
 [class*="st-key-chip_"] button:active {transform: scale(0.96);}
+
+/* ===== 작은 화면 ===== */
+@media (max-width: 480px) {
+    .block-container {padding-left: 0.7rem; padding-right: 0.7rem;}
+    [data-testid="stChatMessageContent"] {max-width: 85%; font-size: 0.98rem;}
+}
 
 /* ===== 모션 줄이기 설정 존중 ===== */
 @media (prefers-reduced-motion: reduce) {
@@ -266,6 +362,7 @@ def scroll_to_bottom():
             function getMainContainer() {
                 const doc = window.parent.document;
                 return (
+                    doc.querySelector('[data-testid="stMain"]') ||
                     doc.querySelector('section[data-testid="stMain"]') ||
                     doc.querySelector('[data-testid="stAppViewContainer"] section.main') ||
                     doc.querySelector('section.main') ||
@@ -591,7 +688,7 @@ st.markdown(
     """
     <div class="mw-bar">
         <div class="mw-contact">
-            <div class="mw-avatar">밀</div>
+            <div class="mw-avatar-wrap"><div class="mw-avatar">밀</div><span class="mw-online"></span></div>
             <div class="mw-name">밀키웨이<span>›</span></div>
             <div class="mw-sub">산청고등학교 AI 챗봇 · 인터스텔라</div>
         </div>
@@ -671,8 +768,10 @@ def render_welcome():
 
 st.markdown(f'<div class="mw-time">{st.session_state.started_label}</div>', unsafe_allow_html=True)
 
+welcome_ph = st.empty()  # 첫 메시지를 보내면 비웁니다
 if not st.session_state.messages:
-    render_welcome()
+    with welcome_ph.container():
+        render_welcome()
 else:
     render_messages()
 
@@ -694,6 +793,7 @@ if st.session_state.queued_prompt:
     st.session_state.queued_prompt = None
 
 if user_input:
+    welcome_ph.empty()  # 환영 말풍선 + 추천 질문 제거
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user", avatar=USER_AVATAR):
         st.markdown(user_input)
